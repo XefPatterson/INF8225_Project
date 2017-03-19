@@ -130,7 +130,11 @@ def create_tf_examples(buckets=_buckets,
 
 
 def create_single_queue(bucket_id, filename):
-    filename_queue = tf.train.string_input_producer(["{}{}.tfrecords".format(filename, bucket_id)])
+    import os
+    file_name = os.path.dirname(os.path.abspath(__file__))
+    path_to_save_example = os.path.join(file_name, os.pardir, "Examples")
+    filename = os.path.join(path_to_save_example, "{}{}.tfrecords".format(filename, bucket_id))
+    filename_queue = tf.train.string_input_producer([filename])
     reader = tf.TFRecordReader()
 
     # Read a single example
@@ -191,18 +195,20 @@ def create_queues_for_bucket(batch_size, filename):
     shuffle_queues = []
     for bucket_id in range(len(_buckets)):
         shuffle_queues.append(create_single_queue(bucket_id, filename))
-
-    capacity = 30 * batch_size
+    capacity = batch_size
 
     # For every buckets, create a queue which return batch_size example
     # of that bucket
     all_queues = []
+    enqueue_ops = []
     for bucket_id in range(len(_buckets)):
         queue = tf.FIFOQueue(capacity=capacity, dtypes=[tf.int64, tf.int64])
-        queue = queue.enqueue(shuffle_queues[bucket_id])
-        all_queues.append(queue)
 
-    return all_queues
+        enqueue_op = queue.enqueue(shuffle_queues[bucket_id])
+
+        all_queues.append(queue)
+        enqueue_ops.append(enqueue_op)
+    return all_queues, enqueue_ops
 
 
 """
@@ -261,18 +267,26 @@ class Seq2Seq_Char_Level:
 
         self.bucket_id = tf.placeholder_with_default(0, [], name="bucket_id")
 
-    def _inputs(self, bucket_id=0):
-        queues = create_queues_for_bucket(FLAGS.batch_size, filename="train")
-        print(type(queues[0]))
-
+    def _inputs(self):
+        queues, op = create_queues_for_bucket(FLAGS.batch_size, filename="train")
         q = tf.QueueBase.from_list(self.bucket_id, queues)
-        print(self.queues[0])
-        print(self.queues[1])
-        print(self.queues[2])
-        print(self.queues[3])
+        tensor = q.dequeue()
 
-        tf.slice(self.queues, self.bucket_id)
-        # self.queues[bucket_id]
+        sess = tf.Session()
+        group_init_ops = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+        sess.run(group_init_ops)
+        coord = tf.train.Coordinator()
+        tf.train.start_queue_runners(sess=sess)
+
+        sess.run(op)
+        out = sess.run(tensor, {self.bucket_id: 1})
+        print(out[0][0][0])
+
+        out = sess.run(tensor, {self.bucket_id: 2})
+        print(len(out[0][0]))
+
+        out = sess.run(tensor, {self.bucket_id: 3})
+        print(len(out[0][0]))
 
     def build(self):
         single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
