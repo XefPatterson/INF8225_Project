@@ -130,7 +130,7 @@ def create_tf_examples(buckets=_buckets,
 
 
 def create_single_queue(bucket_id, filename):
-    filename_queue = tf.train.string_input_producer("{}{}.tfrecords".format(filename, bucket_id))
+    filename_queue = tf.train.string_input_producer(["{}{}.tfrecords".format(filename, bucket_id)])
     reader = tf.TFRecordReader()
 
     # Read a single example
@@ -158,22 +158,31 @@ def create_single_queue(bucket_id, filename):
 
     length_question = context_parsed["length_question"]
     question = sequence_parsed["question"]
+    question = tf.sparse_tensor_to_dense(question)
+    question = tf.reshape(question, [-1])
+    pad_question = tf.zeros(shape=[_buckets[bucket_id][0] - tf.cast(length_question, tf.int32)], dtype=tf.int64)
+    question = tf.concat([question, pad_question], axis=0)
+    question.set_shape(_buckets[bucket_id][0])
 
     length_answer = context_parsed["length_answer"]
     answer = sequence_parsed["answer"]
+    answer = tf.sparse_tensor_to_dense(answer)
+    answer = tf.reshape(answer, [-1])
+    pad_answer = tf.zeros(shape=[_buckets[bucket_id][0] - tf.cast(length_answer, tf.int32)], dtype=tf.int64)
+    answer = tf.concat([answer, pad_answer], axis=0)
+    answer.set_shape(_buckets[bucket_id][1])
 
+    # question.set_shape(length_question)
     # Pad questions to the maximum size in their bucket
-    question = tf.pad(question, [0, _buckets[bucket_id][0] - length_question])
-    answer = tf.pad(answer, [0, _buckets[bucket_id][1] - length_answer])
 
     # Shuffle queue
-    queue = tf.RandomShuffleQueue(capacity,
-                                  min_after_dequeue,
-                                  [tf.int64, tf.int64])
-    queue.enqueue([question, answer])
+    queue = tf.train.shuffle_batch([question, answer],
+                                   batch_size,
+                                   capacity,
+                                   min_after_dequeue)
 
     # Dequeue a single element
-    return queue.dequeue()
+    return queue
 
 
 def create_queues_for_bucket(batch_size, filename):
@@ -249,10 +258,10 @@ class Seq2Seq_Char_Level:
 
         self.forward_only = forward_only
 
-        self.bucket_id = tf.placeholder_with_default(0, tf.int32, name="bucket_id")
+        self.bucket_id = tf.placeholder_with_default(0, [], name="bucket_id")
 
     def inputs(self):
-        queues = create_queues_for_bucket(FLAGS.batch_size, filename="train")
+        self.queues = create_queues_for_bucket(FLAGS.batch_size, filename="train")
         print(queues)
         # for i in range(self.buckets[-1][0]):  # Last bucket is the biggest one.
         #     self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
@@ -325,5 +334,3 @@ class Seq2Seq_Char_Level:
 
 
 """
-model = Seq2Seq_Char_Level()
-
