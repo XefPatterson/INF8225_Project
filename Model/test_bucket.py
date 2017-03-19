@@ -198,9 +198,10 @@ def create_queues_for_bucket(batch_size, filename):
     # of that bucket
     all_queues = []
     for bucket_id in range(len(_buckets)):
-        all_queues.append(tf.train.batch(shuffle_queues[bucket_id],
-                                         batch_size,
-                                         capacity=capacity))
+        queue = tf.FIFOQueue(capacity=capacity, dtypes=[tf.int64, tf.int64])
+        queue = queue.enqueue(shuffle_queues[bucket_id])
+        all_queues.append(queue)
+
     return all_queues
 
 
@@ -260,17 +261,18 @@ class Seq2Seq_Char_Level:
 
         self.bucket_id = tf.placeholder_with_default(0, [], name="bucket_id")
 
-    def inputs(self):
-        self.queues = create_queues_for_bucket(FLAGS.batch_size, filename="train")
-        print(queues)
-        # for i in range(self.buckets[-1][0]):  # Last bucket is the biggest one.
-        #     self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
-        #                                               name="encoder{0}".format(i)))
-        # for i in range(self.buckets[-1][1] + 1):
-        #     self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
-        #                                               name="decoder{0}".format(i)))
-        #     self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
-        #                                               name="weight{0}".format(i)))
+    def _inputs(self, bucket_id=0):
+        queues = create_queues_for_bucket(FLAGS.batch_size, filename="train")
+        print(type(queues[0]))
+
+        q = tf.QueueBase.from_list(self.bucket_id, queues)
+        print(self.queues[0])
+        print(self.queues[1])
+        print(self.queues[2])
+        print(self.queues[3])
+
+        tf.slice(self.queues, self.bucket_id)
+        # self.queues[bucket_id]
 
     def build(self):
         single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
@@ -292,9 +294,7 @@ class Seq2Seq_Char_Level:
 
         self.outputs, self.losses = tf.contrib.legacy_seq2seq.model_with_buckets(
             self.encoder_inputs, self.decoder_inputs, targets,
-            self.target_weights, self.buckets, tf.cond(self.forward_only,
-                                                       lambda x, y: seq2seq_f(x, y, False),
-                                                       lambda x, y: seq2seq_f(x, y, True)),
+            self.target_weights, self.buckets, lambda x, y: seq2seq_f(x, y, False),
             softmax_loss_function=None)
 
         params = tf.trainable_variables()
