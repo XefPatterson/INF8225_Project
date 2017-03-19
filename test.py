@@ -4,13 +4,16 @@ import cPickle
 from tqdm import tqdm
 
 """
+
 Similar code, I just change one hot vector with index value (smaller size in memory)
+Moreover, no index should be zero because of further padding and no <EOS> at the end
 """
-chars = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l',
-         'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
-         'w', 'x', 'y', 'z',
-         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-         ' ', ',', '.', ':', ';', "'", '!', '?', '$', '%', '&', '(', ')', '=', '+', '-', '<EOS>']
+chars = ['<PAD>', '<UNK>', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
+         'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q',
+         'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0',
+         '1', '2', '3', '4', '5', '6', '7', '8', '9', ' ',
+         ',', '.', ':', ';', "'", '!', '?', '$', '%', '&',
+         '(', ')', '=', '+', '-', '<EOS>']
 
 chars_to_idx = {}
 index = 0
@@ -26,20 +29,11 @@ for k, i in chars_to_idx.items():
 def stringToOneHot(s, chars_to_idx, lower=True):
     if lower:
         s = s.lower()
-
-    # Add an UNKNOWN char
-    # Add the <EOS> at the end
-    v_seq = np.zeros((len(s) + 1, len(chars_to_idx.keys()) + 1), dtype=np.float16)
-
+    v_seq = np.zeros(shape=(len(s) + 1), dtype=np.int32)
     for i in range(len(s)):
-        # Is s[i] a known character?
-        try:
-            v_seq[i, chars_to_idx[s[i]]] = 1.0
-        # If not, then unknown = 1
-        except KeyError:
-            v_seq[i, -1] = 1.0
+        v_seq[i] = chars_to_idx.get(s[i], 1)
 
-    v_seq[-1, chars_to_idx['<EOS>']] = 1.0
+    # v_seq[-1] = chars_to_idx(s['<EOS>'])
     return v_seq
 
 
@@ -55,7 +49,7 @@ movie_lines_np = np.loadtxt(movie_lines_txt, dtype='string', delimiter=' +++$+++
 line_to_one_hot = {}
 len_sentences = []
 for line in tqdm(movie_lines_np, desc="String to character index"):
-    line_to_one_hot[line[0]] = [np.argmax(v) for v in stringToOneHot(line[-1], chars_to_idx, lower=True)]
+    line_to_one_hot[line[0]] = stringToOneHot(line[-1], chars_to_idx, lower=True)
     len_sentences.append(len(line_to_one_hot[line[0]]))
 
 qa_pairs = []

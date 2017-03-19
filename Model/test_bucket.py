@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 
 """
-
+   Note: This file is a mess, I am experimenting to create bucket queues
 
 
 
@@ -14,7 +14,7 @@ import numpy as np
 
 """
 
-_buckets = [(10, 10), (30, 30), (50, 50), (80, 80)]
+_buckets = [(30, 30), (60, 60), (100, 100), (150, 150)]
 
 
 def make_single_example(data):
@@ -40,7 +40,7 @@ def make_single_example(data):
 def create_tf_examples(buckets=_buckets,
                        val_p=0.0,
                        test_p=0.0,
-                       saved_stats=False):
+                       saved_stats_for_set=False):
     """
     Merge every example in three TFRecord files (train-test-validation set)
     :param val_p: float (default : 0.1)
@@ -69,30 +69,42 @@ def create_tf_examples(buckets=_buckets,
     np.random.shuffle(indexes)
     train_indices, valid_indices, test_indices = np.split(indexes, [int((1 - test_p - val_p) * len(indexes)),
                                                                     int((1 - test_p) * len(indexes))])
+
+    # Dictionnary containing TfRecords size (number of examples per file)
     saved_stats = {}
+
+    # Iterate over every set
     for data, name in zip([qa_pairs[train_indices], qa_pairs[valid_indices], qa_pairs[test_indices]],
                           ["train", "val", "test"]):
 
+        # Open as many FileWriter as buckets
         writers = []
         for bucket_id in range(len(buckets)):
             writers.append(tf.python_io.TFRecordWriter(
                 os.path.join(path_to_save_example, "{}{}.tfrecords".format(name, bucket_id))))
 
         # Create a TFRecordWriter
-        stat_set = [0 for _ in len(writers)]
+        stat_set = [0 for _ in range(len(writers))]
 
         # Iterate over all examples
         for example in tqdm(data, desc="Creating {} record file".format(name)):
             for bucket_id, (question_length, answer_length) in enumerate(buckets):
+
+                # Write an example in its respective bucket file
                 if len(example[0]) < question_length and len(example[1]) < answer_length:
                     writers[bucket_id].write(make_single_example(example).SerializeToString())
                     stat_set[bucket_id] += 1
                     break
 
-        [writer.close() for writer in writers]
+        # Close buckets
+        for writer in writers:
+            writer.close()
+
+        # Add statistics
         saved_stats[name] = stat_set
 
-    if saved_stats:
+    # Saved statistics
+    if saved_stats_for_set:
         pickle.dump(saved_stats,
                     open(path_to_save_example, "stat_example_file.pkl"),
                     protocol=pickle.HIGHEST_PROTOCOL)
@@ -125,7 +137,7 @@ def create_single_queue(bucket_id, filename):
     _, serialized_example = reader.read(filename_queue)
 
     context_features = {
-        "length_question": tf.FixedLenFeature([], dtype=tf.int64)
+        "length_question": tf.FixedLenFeature([], dtype=tf.int64),
         "length_answer": tf.FixedLenFeature([], dtype=tf.int64)
     }
 
@@ -150,23 +162,31 @@ def create_single_queue(bucket_id, filename):
     length_answer = context_parsed["length_answer"]
     answer = sequence_parsed["answer"]
 
+    # Pad questions to the maximum size in their bucket
     question = tf.pad(question, [0, _buckets[bucket_id][0] - length_question])
     answer = tf.pad(answer, [0, _buckets[bucket_id][1] - length_answer])
 
+    # Shuffle queue
     queue = tf.RandomShuffleQueue(capacity,
                                   min_after_dequeue,
                                   [tf.int64, tf.int64])
     queue.enqueue([question, answer])
+
+    # Dequeue a single element
     return queue.dequeue()
 
 
 def create_queues_for_bucket(batch_size, filename):
+    # For every buckets, create a ShuffleExample which return a single
+    # element in that bucket
     shuffle_queues = []
     for bucket_id in range(len(_buckets)):
         shuffle_queues.append(create_single_queue(bucket_id, filename))
 
     capacity = 30 * batch_size
 
+    # For every buckets, create a queue which return batch_size example
+    # of that bucket
     all_queues = []
     for bucket_id in range(len(_buckets)):
         all_queues.append(tf.train.batch(shuffle_queues[bucket_id],
@@ -205,9 +225,8 @@ flags.DEFINE_integer("num_layers", 1, "Num of layers [1]")
 FLAGS = flags.FLAGS
 
 
-class Model:
+class Seq2Seq_Char_Level:
     def __init__(self,
-                 FLAGS,
                  buckets=_buckets,
                  forward_only=False):
 
@@ -234,6 +253,7 @@ class Model:
 
     def inputs(self):
         queues = create_queues_for_bucket(FLAGS.batch_size, filename="train")
+        print(queues)
         # for i in range(self.buckets[-1][0]):  # Last bucket is the biggest one.
         #     self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
         #                                               name="encoder{0}".format(i)))
@@ -292,3 +312,18 @@ class Model:
 
         outputs = session.run(output_feed, input_feed)
         return outputs
+
+
+"""
+
+
+
+
+
+    TRAIN function
+
+
+
+"""
+model = Seq2Seq_Char_Level()
+
