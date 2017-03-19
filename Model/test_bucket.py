@@ -14,7 +14,7 @@ import numpy as np
 
 """
 
-_buckets = [(30, 30), (60, 60), (100, 100), (150, 150)]
+_buckets = [(30, 30), (60, 60)]  # , (100, 100), (150, 150)
 
 
 def make_single_example(data):
@@ -129,7 +129,7 @@ def create_tf_examples(buckets=_buckets,
 """
 
 
-def create_single_queue(bucket_id, filename):
+def create_single_queue(bucket_id, filename, batch_size):
     import os
     file_name = os.path.dirname(os.path.abspath(__file__))
     path_to_save_example = os.path.join(file_name, os.pardir, "Examples")
@@ -156,7 +156,7 @@ def create_single_queue(bucket_id, filename):
         sequence_features=sequence_features
     )
 
-    batch_size = 1
+    batch_size = batch_size
     capacity = 10 * batch_size
     min_after_dequeue = 9 * batch_size
 
@@ -185,7 +185,7 @@ def create_single_queue(bucket_id, filename):
                                    capacity,
                                    min_after_dequeue)
 
-    # Dequeue a single element
+    # Dequeue a batch
     return queue
 
 
@@ -194,7 +194,7 @@ def create_queues_for_bucket(batch_size, filename):
     # element in that bucket
     shuffle_queues = []
     for bucket_id in range(len(_buckets)):
-        shuffle_queues.append(create_single_queue(bucket_id, filename))
+        shuffle_queues.append(create_single_queue(bucket_id, filename, batch_size))
     capacity = batch_size
 
     # For every buckets, create a queue which return batch_size example
@@ -205,7 +205,6 @@ def create_queues_for_bucket(batch_size, filename):
         queue = tf.FIFOQueue(capacity=capacity, dtypes=[tf.int64, tf.int64])
 
         enqueue_op = queue.enqueue(shuffle_queues[bucket_id])
-
         all_queues.append(queue)
         enqueue_ops.append(enqueue_op)
     return all_queues, enqueue_ops
@@ -255,10 +254,26 @@ class Seq2Seq_Char_Level:
                                                                  FLAGS.learning_rate_decay_factor,
                                                                  staircase=True)
         self.buckets = buckets
-
+        """
+        [[ 30  30]
+        [ 60  60]
+        [100 100]
+        [150 150]]
+        """
         self.encoder_inputs = []
         self.decoder_inputs = []
         self.target_weights = []
+
+        for i in range(self.buckets[-1][0]):
+            self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
+                                                      name="encoder{0}".format(i)))
+        for i in range(self.buckets[-1][1] + 1):
+            self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
+                                                      name="decoder{0}".format(i)))
+            self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
+                                                      name="weight{0}".format(i)))
+        self.targets = [self.decoder_inputs[i + 1]
+                        for i in range(len(self.decoder_inputs) - 1)]
 
         self.gradient_norms = []
         self.updates = []
@@ -266,27 +281,27 @@ class Seq2Seq_Char_Level:
         self.forward_only = forward_only
 
         self.bucket_id = tf.placeholder_with_default(0, [], name="bucket_id")
+        self.py_bucket_id = 0
+
+        self.queues, self.op_starting_queue = create_queues_for_bucket(FLAGS.batch_size, filename="train")
 
     def _inputs(self):
-        queues, op = create_queues_for_bucket(FLAGS.batch_size, filename="train")
-        q = tf.QueueBase.from_list(self.bucket_id, queues)
-        tensor = q.dequeue()
+        q = tf.QueueBase.from_list(self.bucket_id, self.queues)
 
-        sess = tf.Session()
-        group_init_ops = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
-        sess.run(group_init_ops)
-        coord = tf.train.Coordinator()
-        tf.train.start_queue_runners(sess=sess)
+        inputs = tf.squeeze(q.dequeue())
+        questions = inputs[0]
+        answers = inputs[1]
 
-        sess.run(op)
-        out = sess.run(tensor, {self.bucket_id: 1})
-        print(out[0][0][0])
+        for index in range(self.buckets[self.py_bucket_id][0]):
+            self.encoder_inputs[index] = questions[:, index]
 
-        out = sess.run(tensor, {self.bucket_id: 2})
-        print(len(out[0][0]))
-
-        out = sess.run(tensor, {self.bucket_id: 3})
-        print(len(out[0][0]))
+        length_decoder = self.buckets[self.py_bucket_id][1]
+        for index in range(length_decoder):
+            self.decoder_inputs[index] = answers[:, index]
+            self.target_weights[index] = tf.cast(tf.not_equal(questions[:, index], 0), tf.float32)
+            if index == self.buckets[self.py_bucket_id][1]:
+                self.target_weights[index] = tf.zeros_like(questions[:, index])
+        self.decoder_inputs[length_decoder] = tf.zeros([FLAGS.batch_size], dtype=np.int32)
 
     def build(self):
         single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
@@ -303,48 +318,40 @@ class Seq2Seq_Char_Level:
                 output_projection=None,
                 feed_previous=do_decode)
 
-        targets = [self.decoder_inputs[i + 1]
-                   for i in range(len(self.decoder_inputs) - 1)]
-
         self.outputs, self.losses = tf.contrib.legacy_seq2seq.model_with_buckets(
-            self.encoder_inputs, self.decoder_inputs, targets,
-            self.target_weights, self.buckets, lambda x, y: seq2seq_f(x, y, False),
+            self.encoder_inputs,
+            self.decoder_inputs,
+            self.targets,
+            self.target_weights,
+            self.buckets,
+            lambda x, y: seq2seq_f(x, y, False),
             softmax_loss_function=None)
 
         params = tf.trainable_variables()
         if not self.forward_only:
-            opt = tf.train.GradientDescentOptimizer(self.learning_rate)
-            am = 2  # tf.gradients.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N
+            opt = tf.train.AdamOptimizer(self.learning_rate)
             for b in range(len(self.buckets)):
-                gradients = tf.gradients(self.losses[b], params, aggregation_method=am)
-                clipped_gradients, norm = tf.clip_by_global_norm(gradients, self.max_gradient_norm)
-                self.gradient_norms.append(norm)
-                self.updates.append(opt.apply_gradients(
-                    zip(clipped_gradients, params), global_step=self.global_step))
+                print(b)
+                gradients = opt.compute_gradients(self.losses[b], params)
+                self.updates.append(opt.apply_gradients(gradients, self.global_step))
+
+
+                # clipped_gradients, norm = tf.clip_by_global_norm(gradients, self.max_gradient_norm)
+                # self.gradient_norms.append(norm)
+                # self.updates.append(opt.apply_gradients(
+                #     zip(clipped_gradients, params), global_step=self.global_step))
 
     def forward(self, bucket_id, session):
         encoder_size, decoder_size = self.buckets[bucket_id]
 
         input_feed = {self.bucket_id: bucket_id}
+        self.py_bucket_id = bucket_id
 
         output_feed = [self.updates[bucket_id],  # Update Op that does SGD.
-                       self.gradient_norms[bucket_id],  # Gradient norm.
+                       # self.gradient_norms[bucket_id],  # Gradient norm.
                        self.losses[bucket_id]]  # Loss for this batch.
         for l in xrange(decoder_size):  # Output logits.
             output_feed.append(self.outputs[bucket_id][l])
 
         outputs = session.run(output_feed, input_feed)
         return outputs
-
-
-"""
-
-
-
-
-
-    TRAIN function
-
-
-
-"""
