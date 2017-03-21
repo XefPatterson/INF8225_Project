@@ -126,13 +126,13 @@ class Seq2Seq:
 
         # Instead of an array of dim (batch_size, bucket_length),
         # the model is passed a list of sized batch_size, containing vector of size bucket_length
-        for l in xrange(encoder_size):
+        for l in range(encoder_size):
             input_feed[self.encoder_inputs[l].name] = questions[:, l]
 
         # Same for decoder_input
-        for l in xrange(decoder_size):
+        for l in range(decoder_size):
             input_feed[self.decoder_inputs[l].name] = answers[:, l]
-            input_feed[self.target_weights[l].name] = np.equal(answers[:, l], 0).astype(np.float32)
+            input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l+1], 0).astype(np.float32)
 
         last_target = self.decoder_inputs[decoder_size].name
         input_feed[last_target] = np.zeros_like(answers[:, 0], dtype=np.int64)
@@ -141,7 +141,7 @@ class Seq2Seq:
                        self.gradient_norms[bucket_id],
                        self.losses[bucket_id]]
 
-        for l in xrange(decoder_size):
+        for l in range(decoder_size):
             output_feed.append(self.outputs[bucket_id][l])
 
         outputs = session.run(output_feed, input_feed)

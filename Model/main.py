@@ -26,8 +26,8 @@ FLAGS = flags.FLAGS
 
 if __name__ == '__main__':
     # run before
-    # import tf_records
-    # tf_records.create_tf_examples(_buckets)
+    #import tf_records
+    #tf_records.create_tf_examples(_buckets)
 
     model.FLAGS = FLAGS
     seq2seq = model.Seq2Seq(buckets=_buckets)

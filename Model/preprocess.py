@@ -26,7 +26,7 @@ def parse_Cornwell_dataset():
         if lower:
             s = s.lower()
 
-        v_seq = np.zeros(shape=(len(s) + 1), dtype=np.int32)
+        v_seq = np.zeros(shape=(len(s)), dtype=np.int32)
         for i in range(len(s)):
             v_seq[i] = chars_to_idx.get(s[i], 1)
 
