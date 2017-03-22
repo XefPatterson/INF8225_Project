@@ -93,13 +93,13 @@ class Seq2Seq:
             self.targets,
             self.target_weights,
             self.buckets,
-            lambda x, y: seq2seq_f(x, y, False),
-            softmax_loss_function=None)
+            lambda x, y: seq2seq_f(x, y, False))
 
         params = tf.trainable_variables()
         if not self.forward_only:
             opt = tf.train.AdamOptimizer(self.learning_rate)
             for b in range(len(self.buckets)):
+                print(b)
                 gradients = tf.gradients(self.losses[b], params)
                 clipped_gradients, norm = tf.clip_by_global_norm(gradients,
                                                                  self.max_gradient_norm)
@@ -132,15 +132,17 @@ class Seq2Seq:
         # Same for decoder_input
         for l in range(decoder_size):
             input_feed[self.decoder_inputs[l].name] = answers[:, l]
-            input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l+1], 0).astype(np.float32)
+            if l == decoder_size - 1:
+                break
+            input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l + 1], 0).astype(np.float32)
 
-        last_target = self.decoder_inputs[decoder_size].name
+        input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
+        last_target = self.target_weights[decoder_size - 1].name
         input_feed[last_target] = np.zeros_like(answers[:, 0], dtype=np.int64)
 
         output_feed = [self.updates[bucket_id],
                        self.gradient_norms[bucket_id],
                        self.losses[bucket_id]]
-
         for l in range(decoder_size):
             output_feed.append(self.outputs[bucket_id][l])
 
@@ -148,3 +150,45 @@ class Seq2Seq:
         cprint(": [SUCCEED]".format(bucket_id), color="green")
 
         return outputs
+
+    def predict(self, bucket_id, session):
+        """
+                Forward pass and backward
+                :param bucket_id:
+                :param session:
+                :return:
+                """
+        cprint("[*] One iteration for examples in bucket {}".format(bucket_id), color="yellow", end="")
+        # Retrieve size of sentence for this bucket
+        encoder_size, decoder_size = self.buckets[bucket_id]
+
+        # Retrieve a batch of example from the bucket {bucket_id}
+        # Ideally we should not call twice sess.run(), in one iteration, but i don't know how to sove it:'(
+        input_feed = {self.bucket_id: bucket_id}
+        questions, answers = session.run([self._questions, self._answers], input_feed)
+
+        # Instead of an array of dim (batch_size, bucket_length),
+        # the model is passed a list of sized batch_size, containing vector of size bucket_length
+        for l in range(encoder_size):
+            input_feed[self.encoder_inputs[l].name] = questions[:, l]
+
+        # Same for decoder_input
+        for l in range(decoder_size):
+            input_feed[self.decoder_inputs[l].name] = answers[:, l]
+            if l == decoder_size - 1:
+                break
+            input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l + 1], 0).astype(np.float32)
+
+        input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
+        last_target = self.target_weights[decoder_size - 1].name
+        input_feed[last_target] = np.zeros_like(answers[:, 0], dtype=np.int64)
+
+        output_feed = []
+        for l in range(decoder_size):
+            output_feed.append(self.outputs[bucket_id][l])
+
+        #outputs : tuple of (outputs, losses)
+        #  where outputs = list of 2D (batch_size x vocab_size) tensors
+        outputs = session.run(output_feed, input_feed)
+        out_sequence = outputs[0]
+        return out_sequence

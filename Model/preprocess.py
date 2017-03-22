@@ -22,6 +22,9 @@ def parse_Cornwell_dataset():
     for k, i in chars_to_idx.items():
         idx_to_chars[i] = k
 
+    with open(os.path.join('Data', 'MovieQA', "idx_to_chars.pkl"), 'wb') as f:
+        cPickle.dump(idx_to_chars, f)
+
     def stringToOneHot(s, chars_to_idx, lower=True):
         if lower:
             s = s.lower()
