@@ -159,13 +159,14 @@ class Seq2Seq:
         # Same for decoder_input
         for l in range(decoder_size):
             input_feed[self.decoder_inputs[l].name] = answers[:, l]
+            
             if l == decoder_size - 1:
                 break
+            
             input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l + 1], 0).astype(np.float32)
 
         input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
-        last_target = self.target_weights[decoder_size - 1].name
-        input_feed[last_target] = np.zeros_like(answers[:, 0], dtype=np.int64)
+        input_feed[self.target_weights[decoder_size - 1].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
 
         output_feed = [self.merged_summary_op,  # Summary operation
                        self.global_step,  # Current global step
