@@ -42,6 +42,11 @@ def get_random_bucket_id(epoch_type, size_tf_records):
             break
     return bucket_id
 
+def get_random_bucket_id_pkl(bucket_sizes):
+    odds = bucket_sizes/np.sum(bucket_sizes)
+    bucket_id = np.argmax(np.random.multinomial(1, odds, 1))
+    return bucket_id
+
 
 def decrypt(questions, answers, predictions, idx_to_char, batch_size=32, number_to_decrypt=4):
     index_to_decrypt = np.random.choice(range(batch_size), number_to_decrypt)
@@ -58,3 +63,7 @@ def decrypt(questions, answers, predictions, idx_to_char, batch_size=32, number_
         cprint("Question: > {}".format(question), color="yellow")
         cprint("True answer: > {}".format(true_answer), color="green")
         cprint("Fake answer: > {}".format(fake_answer), color="red")
+
+def decrypt_single(sentence, idx_to_char):
+    return "".join([idx_to_char[idx] for idx in sentence])
+

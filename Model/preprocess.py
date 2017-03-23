@@ -3,6 +3,28 @@ import os
 import cPickle
 from tqdm import tqdm
 
+bucket_lengths = [(10,10), (25,25), (50,50), (100,100), (150,150)]
+
+def create_buckets(qa_pairs):
+    """
+    Creates a dict of buckets of format bucket_id : list of tuples
+    :param qa_pairs:
+    :return: Dictionary of buckets
+    """
+    # Init buckets:
+    buckets = {}
+    for i in range(len(bucket_lengths)):
+        buckets[i]=[]
+
+    # Fill buckets :
+    for qa in tqdm(qa_pairs, desc="Creating buckets"):
+        for i in range(len(bucket_lengths)):
+            # Q and A are shorter than bucket size
+            if len(qa[0]) <= bucket_lengths[i][0] and len(qa[1]) <= bucket_lengths[i][1]:
+                buckets[i].append(qa)
+                break
+
+    return buckets
 
 def parse_Cornwell_dataset():
     chars = ['<PAD>', '<UNK>', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
@@ -62,10 +84,20 @@ def parse_Cornwell_dataset():
     # Memory management
     del line_to_one_hot
 
+    # Create buckets
+    qa_pairs = create_buckets(qa_pairs)
+
+    # Save stats for buckets:
+    bucket_sizes=[]
+    for k,v in qa_pairs.items():
+        bucket_sizes.append(len(v))
+
     print("Saving file")
-    qa_pairs_pkl = os.path.join(movieQA_folder, 'QA_Pairs.pkl')
+    qa_pairs_pkl = os.path.join(movieQA_folder, 'QA_Pair_Buckets.pkl')
     with open(qa_pairs_pkl, 'wb') as f:
-        cPickle.dump(qa_pairs, f, protocol=cPickle.HIGHEST_PROTOCOL)
+        cPickle.dump({"qa_pairs":qa_pairs,
+                      "bucket_sizes":bucket_sizes,
+                      "bucket_lengths":bucket_lengths}, f, protocol=cPickle.HIGHEST_PROTOCOL)
 
 
 if __name__ == '__main__':

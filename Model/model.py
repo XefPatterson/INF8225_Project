@@ -119,6 +119,8 @@ class Seq2Seq:
                 self.updates.append(opt.apply_gradients(
                     zip(clipped_gradients, params), global_step=self.global_step))
 
+                #self.train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(self.loss)
+
         self._summary()
         cprint("[!] Model built", color="green")
 

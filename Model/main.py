@@ -6,7 +6,7 @@ import pickle
 import os
 import utils
 
-_buckets = [(30, 30), (60, 60), (100, 100), (150, 150)]
+#_buckets = [(30, 30), (60, 60), (100, 100), (150, 150)]
 
 flags = tf.app.flags
 flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
@@ -29,20 +29,28 @@ flags.DEFINE_integer("num_layers", 1, "Num of layers [1]")
 FLAGS = flags.FLAGS
 
 if __name__ == '__main__':
-    # !! run before if not already done (quite long) !!
     with open(os.path.join('..', 'Data', 'MovieQA', 'idx_to_chars.pkl'), 'rb') as f:
         idx_to_char = pickle.load(f)
 
     file_name = os.path.dirname(os.path.abspath(__file__))
+    """
     path_to_save_example = os.path.join(file_name, os.pardir, "Examples", "stat_example_file.pkl")
     if not os.path.exists(path_to_save_example):
         import tf_records
         tf_records.create_tf_examples(_buckets, saved_stats_for_set=True)
     with open(path_to_save_example, 'rb') as f:
         size_tf_records = pickle.load(f)
+    """
+
+    # Load data in RAM:
+    with open(os.path.join('..', 'Data', 'MovieQA', 'QA_Pair_Buckets.pkl'), 'rb') as f:
+        data = pickle.load(f)
+        qa_pairs = data['qa_pairs']
+        bucket_sizes = data['bucket_sizes']
+        bucket_lengths = data['bucket_lengths']
 
     model.FLAGS = FLAGS
-    seq2seq = model.Seq2Seq(buckets=_buckets)
+    seq2seq = model.Seq2Seq(buckets=bucket_lengths)
     seq2seq.build()
 
     sess = tf.Session()
@@ -58,7 +66,8 @@ if __name__ == '__main__':
     while global_step < FLAGS.nb_epochs:
 
         # Select bucket for the epoch
-        chosen_bucket_id = utils.get_random_bucket_id("train", size_tf_records)
+        #chosen_bucket_id = utils.get_random_bucket_id("train", size_tf_records)
+        chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
         print("Choosen bucket ID:{}".format(chosen_bucket_id))
 
         # Run training iterations
