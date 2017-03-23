@@ -30,8 +30,8 @@ FLAGS = flags.FLAGS
 
 if __name__ == '__main__':
     # !! run before if not already done (quite long) !!
-    # import tf_records
-    # tf_records.create_tf_examples(_buckets)
+    import tf_records
+    tf_records.create_tf_examples(_buckets)
 
     with open(os.path.join("..", 'Data', 'MovieQA', 'idx_to_chars.pkl'), 'rb') as f:
         idx_to_char = pickle.load(f)
