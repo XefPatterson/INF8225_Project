@@ -30,15 +30,16 @@ FLAGS = flags.FLAGS
 
 if __name__ == '__main__':
     # !! run before if not already done (quite long) !!
-    # import tf_records
-    # tf_records.create_tf_examples(_buckets)
-
-    with open(os.path.join("..", 'Data', 'MovieQA', 'idx_to_chars.pkl'), 'rb') as f:
+    with open(os.path.join('Data', 'MovieQA', 'idx_to_chars.pkl'), 'rb') as f:
         idx_to_char = pickle.load(f)
 
     file_name = os.path.dirname(os.path.abspath(__file__))
     path_to_save_example = os.path.join(file_name, os.pardir, "Examples", "stat_example_file.pkl")
-    size_tf_records = pickle.load(open(path_to_save_example))
+    if not os.path.exists(path_to_save_example):
+        import tf_records
+        tf_records.create_tf_examples(_buckets, saved_stats_for_set=True)
+    with open(path_to_save_example, 'rb') as f:
+        size_tf_records = pickle.load(f)
 
     model.FLAGS = FLAGS
     seq2seq = model.Seq2Seq(buckets=_buckets)
