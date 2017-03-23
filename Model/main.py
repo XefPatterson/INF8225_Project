@@ -30,7 +30,7 @@ FLAGS = flags.FLAGS
 
 if __name__ == '__main__':
     # !! run before if not already done (quite long) !!
-    with open(os.path.join('Data', 'MovieQA', 'idx_to_chars.pkl'), 'rb') as f:
+    with open(os.path.join('..', 'Data', 'MovieQA', 'idx_to_chars.pkl'), 'rb') as f:
         idx_to_char = pickle.load(f)
 
     file_name = os.path.dirname(os.path.abspath(__file__))
