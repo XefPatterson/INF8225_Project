@@ -23,7 +23,7 @@ def parse_Cornwell_dataset():
         idx_to_chars[i] = k
 
     with open(os.path.join('Data', 'MovieQA', "idx_to_chars.pkl"), 'wb') as f:
-        cPickle.dump(idx_to_chars, f)
+        cPickle.dump(idx_to_chars, f, protocol=cPickle.HIGHEST_PROTOCOL)
 
     def stringToOneHot(s, chars_to_idx, lower=True):
         if lower:

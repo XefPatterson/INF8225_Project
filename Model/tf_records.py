@@ -31,7 +31,7 @@ def make_single_example(data):
 def create_tf_examples(buckets,
                        val_p=0.0,
                        test_p=0.0,
-                       saved_stats_for_set=False):
+                       saved_stats_for_set=True):
     """
     Create {len(buckets) * 3} TFRecord files (3 for train, validation, test set)
     :param buckets: list
@@ -100,5 +100,5 @@ def create_tf_examples(buckets,
     # Saved statistics
     if saved_stats_for_set:
         pickle.dump(saved_stats,
-                    open(path_to_save_example, "stat_example_file.pkl"),
+                    open(os.path.join(path_to_save_example, "stat_example_file.pkl"), "wb"),
                     protocol=pickle.HIGHEST_PROTOCOL)
