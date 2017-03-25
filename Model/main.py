@@ -6,7 +6,7 @@ import pickle
 import os
 import utils
 
-#_buckets = [(30, 30), (60, 60), (100, 100), (150, 150)]
+# _buckets = [(30, 30), (60, 60)]  # , (100, 100), (150, 150)
 
 flags = tf.app.flags
 flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
@@ -57,22 +57,24 @@ if __name__ == '__main__':
     saver, summary_writer = utils.restore(seq2seq, sess)
 
     # Start queues
-    coord = tf.train.Coordinator()
-    tf.train.start_queue_runners(sess=sess)
-    sess.run(seq2seq.op_starting_queue)
+    # coord = tf.train.Coordinator()
+    # tf.train.start_queue_runners(sess=sess)
+    # sess.run(seq2seq.op_starting_queue)
 
     global_step = sess.run(seq2seq.global_step)
 
     while global_step < FLAGS.nb_epochs:
-
+        print("Choose bucket")
         # Select bucket for the epoch
-        #chosen_bucket_id = utils.get_random_bucket_id("train", size_tf_records)
         chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
+
         print("Choosen bucket ID:{}".format(chosen_bucket_id))
 
         # Run training iterations
         for _ in trange(FLAGS.nb_iter_per_epoch, leave=False):
-            out = seq2seq.forward(chosen_bucket_id, sess)
+            questions, answers = utils.get_batch(qa_pairs, bucket_lengths, chosen_bucket_id, FLAGS.batch_size)
+
+            out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers)
 
             # Save losses
             summary_writer.add_summary(out[0], out[1])
@@ -81,7 +83,10 @@ if __name__ == '__main__':
         saver.save(sess, "model", global_step)
 
         # Run testing iterations
-        predictions, questions, answers = seq2seq.predict(np.random.randint(len(_buckets)), sess)
+
+        questions, answers = utils.get_batch(qa_pairs, bucket_lengths, chosen_bucket_id, FLAGS.batch_size)
+        predictions, questions, answers = seq2seq.predict(np.random.randint(len(bucket_lengths)), sess, questions,
+                                                          answers)
         # (64, 30)
 
         utils.decrypt(questions, answers, predictions, idx_to_char)

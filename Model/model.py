@@ -71,7 +71,7 @@ class Seq2Seq:
         :return:
         """
         cprint("[*] Building model", color="yellow")
-        self._build_queues()
+        # self._build_queues()
 
         single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
         cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
@@ -112,14 +112,12 @@ class Seq2Seq:
             for b in range(len(self.buckets)):
                 cprint("Constructing the forward pass for bucket {}".format(b))
 
-                gradients = tf.gradients(self.train_losses[b], params)
+                gradients = tf.gradients(self.train_losses[b], params, aggregation_method=2)
                 clipped_gradients, norm = tf.clip_by_global_norm(gradients,
                                                                  self.max_gradient_norm)
                 self.gradient_norms.append(norm)
                 self.updates.append(opt.apply_gradients(
                     zip(clipped_gradients, params), global_step=self.global_step))
-
-                #self.train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(self.loss)
 
         self._summary()
         cprint("[!] Model built", color="green")
@@ -132,10 +130,43 @@ class Seq2Seq:
         """
         with tf.variable_scope(scope_name) as _:
             # A summary for the training loss
+            self.merged_summary = []
             for bucket_id in range(len(self.buckets)):
-                tf.summary.scalar(name="training_loss_bucket_{}".format(bucket_id), tensor=self.train_losses[bucket_id])
+                self.merged_summary.append(
+                    tf.summary.scalar(name="training_loss_bucket_{}".format(bucket_id),
+                                      tensor=self.train_losses[bucket_id]))
 
-            self.merged_summary_op = tf.summary.merge_all()
+            tf.summary.scalar(name="bucket_id", tensor=self.bucket_id)
+
+    def forward_with_feed_dict(self, bucket_id, session, questions, answers):
+        encoder_size, decoder_size = self.buckets[bucket_id]
+        input_feed = {self.bucket_id: bucket_id}
+
+        for l in range(encoder_size):
+            input_feed[self.encoder_inputs[l].name] = questions[:, l]
+
+        for l in range(decoder_size):
+            input_feed[self.decoder_inputs[l].name] = answers[:, l]
+            if l == decoder_size - 1:
+                input_feed[self.target_weights[decoder_size - 1].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
+            else:
+                input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l + 1], 0).astype(np.float32)
+
+        input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
+
+        output_feed = [self.merged_summary[bucket_id],  # Summary operation
+                       self.global_step,  # Current global step
+                       self.updates[bucket_id],  # Nothing
+                       self.gradient_norms[bucket_id],  # A scalar the gradient norm
+                       self.train_losses[bucket_id]]  # Training loss, a scalar
+
+        for l in range(decoder_size):
+            # Will return a numpy array [batch_size x size_vocab x 1]. Value are not restricted to [-1, 1]
+            output_feed.append(self.train_outputs[bucket_id][l])
+
+        # outputs is a list of size (3 + decoder_size)
+        outputs = session.run(output_feed, input_feed)
+        return outputs
 
     def forward(self, bucket_id, session):
         """
@@ -161,10 +192,10 @@ class Seq2Seq:
         # Same for decoder_input
         for l in range(decoder_size):
             input_feed[self.decoder_inputs[l].name] = answers[:, l]
-            
+
             if l == decoder_size - 1:
                 break
-            
+
             input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l + 1], 0).astype(np.float32)
 
         input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
@@ -184,7 +215,7 @@ class Seq2Seq:
         outputs = session.run(output_feed, input_feed)
         return outputs
 
-    def predict(self, bucket_id, session):
+    def predict(self, bucket_id, session, questions, answers):
         """
                 Forward pass and backward
                 :param bucket_id:
@@ -194,10 +225,8 @@ class Seq2Seq:
         # Retrieve size of sentence for this bucket
         encoder_size, decoder_size = self.buckets[bucket_id]
 
-        # Retrieve a batch of example from the bucket {bucket_id}
-        # Ideally we should not call twice sess.run(), in one iteration, but i don't know how to sove it:'(
         input_feed = {self.bucket_id: bucket_id}
-        questions, answers = session.run([self._questions, self._answers], input_feed)
+        # questions, answers = session.run([self._questions, self._answers], input_feed)
 
         # Instead of an array of dim (batch_size, bucket_length),
         # the model is passed a list of sized batch_size, containing vector of size bucket_length
