@@ -80,7 +80,7 @@ if __name__ == '__main__':
             summary_writer.add_summary(out[0], out[1])
 
         # Save model
-        saver.save(sess, "model", global_step)
+        saver.save(sess, "model/model", global_step)
 
         # Run testing iterations
 
