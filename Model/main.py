@@ -24,7 +24,7 @@ flags.DEFINE_integer("vocab_size", 55, "The size of the vocabulary [64]")
 flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.5]")
 
 flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [128]")
-flags.DEFINE_integer("num_layers", 1, "Num of layers [1]")
+flags.DEFINE_integer("num_layers", 3, "Num of layers [1]")
 
 FLAGS = flags.FLAGS
 
@@ -64,16 +64,12 @@ if __name__ == '__main__':
     global_step = sess.run(seq2seq.global_step)
 
     while global_step < FLAGS.nb_epochs:
-        print("Choose bucket")
-        # Select bucket for the epoch
-        chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
-
-        print("Choosen bucket ID:{}".format(chosen_bucket_id))
 
         # Run training iterations
         for _ in trange(FLAGS.nb_iter_per_epoch, leave=False):
+            # Select bucket for the epoch
+            chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
             questions, answers = utils.get_batch(qa_pairs, bucket_lengths, chosen_bucket_id, FLAGS.batch_size)
-
             out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers)
 
             # Save losses
@@ -83,10 +79,9 @@ if __name__ == '__main__':
         saver.save(sess, "model/model", global_step)
 
         # Run testing iterations
-
+        chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
         questions, answers = utils.get_batch(qa_pairs, bucket_lengths, chosen_bucket_id, FLAGS.batch_size)
-        predictions, questions, answers = seq2seq.predict(np.random.randint(len(bucket_lengths)), sess, questions,
-                                                          answers)
+        predictions, questions, answers = seq2seq.predict(chosen_bucket_id, sess, questions, answers)
         # (64, 30)
 
         utils.decrypt(questions, answers, predictions, idx_to_char)

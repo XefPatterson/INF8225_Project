@@ -32,18 +32,22 @@ class Seq2Seq:
 
         self.encoder_inputs = []
         self.decoder_inputs = []
+        self.targets = []
         self.target_weights = []
 
         for i in range(self.buckets[-1][0]):
             self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                       name="encoder{0}".format(i)))
         for i in range(self.buckets[-1][1] + 1):
-            self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
+            self.targets.append(tf.placeholder(tf.int32, shape=[None],
                                                       name="decoder{0}".format(i)))
-            self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
-                                                      name="weight{0}".format(i)))
-        self.targets = [self.decoder_inputs[i + 1]
-                        for i in range(len(self.decoder_inputs) - 1)]
+            #self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
+            #                                          name="weight{0}".format(i)))
+
+        self.decoder_inputs =[tf.zeros_like(self.targets[0], dtype=tf.int64, name='GO')] + self.targets[:-1]
+
+        #self.targets = [self.decoder_inputs[i + 1] for i in range(len(self.decoder_inputs) - 1)]
+        self.target_weights = [tf.ones_like(label, dtype=tf.float32) for label in self.targets]
 
         self.gradient_norms = []
         self.updates = []
