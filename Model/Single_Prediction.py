@@ -6,6 +6,7 @@ from termcolor import cprint
 import os
 import model
 import utils
+import time
 
 
 flags = tf.app.flags
@@ -29,6 +30,8 @@ flags.DEFINE_integer("num_layers", 1, "Num of layers [1]")
 FLAGS = flags.FLAGS
 model.FLAGS = FLAGS
 
+
+s1 = time.time()
 # Load the idx_to_chars dictionary
 with open(os.path.join('..', 'Data', 'MovieQA', 'idx_to_chars.pkl'), 'rb') as f:
     idx_to_chars = pickle.load(f)
@@ -38,7 +41,7 @@ with open(os.path.join('..', 'Data', 'MovieQA', 'chars_to_idx.pkl'), 'rb') as f:
     chars_to_idx = pickle.load(f)
 
 # Instanciates and build the model for feedforward only
-seq2seq = model.Seq2Seq(buckets=[(10, 10), (25, 25), (50, 50), (100, 100), (150, 150)], forward_only=True)
+seq2seq = model.Seq2Seq(buckets=[(25, 25)], forward_only=True)
 seq2seq.build()
 
 # Restore the trained model's parameters from checkpoint file
@@ -56,8 +59,8 @@ a = utils.encrypt_single(answer_string, chars_to_idx)
 
 # Equivalent to utils.get_batch but for one example
 #   Prepare the batch (batch_size = 1)
-buckets = [(10, 10), (25, 25), (50, 50), (100, 100), (150, 150)]
-bucket_id = 1
+buckets = [(25, 25)]
+bucket_id = 0
 q_pads = np.zeros([1, buckets[bucket_id][0]])
 a_pads = np.zeros([1, buckets[bucket_id][1]])
 
@@ -65,7 +68,7 @@ q_pads[0][:q.shape[0]] = q
 a_pads[0][:a.shape[0]] = a
 
 # Processing
-outputs, questions, answers = seq2seq.predict(bucket_id=1, session=sess, questions=q_pads, answers=a_pads)
+outputs, questions, answers = seq2seq.predict(bucket_id=0, session=sess, questions=q_pads, answers=a_pads)
 
 # The model replies
 outputs = np.squeeze(outputs)
@@ -81,4 +84,4 @@ a_string = utils.decrypt_single(list(answers), idx_to_chars)
 cprint("Q : " + q_string.split("<PAD>")[0], color="green")
 cprint("A : " + a_string.split("<PAD>")[0], color="yellow")
 cprint("O : " + output_string, color="red")
-
+print(int(time.time() - s1), " seconds")
