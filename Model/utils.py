@@ -80,3 +80,6 @@ def decrypt(questions, answers, predictions, idx_to_char, batch_size=32, number_
 
 def decrypt_single(sentence, idx_to_char):
     return "".join([idx_to_char[idx] for idx in sentence])
+    
+def encrypt_single(string, char_to_idx):
+    return np.array([char_to_idx[char] for char in string.lower()])
