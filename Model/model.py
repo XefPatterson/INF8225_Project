@@ -6,7 +6,7 @@ from termcolor import cprint
 FLAGS = None
 
 
-class Seq2Seq:
+class Seq2Seq(object):
     def __init__(self,
                  buckets,
                  forward_only=False):
