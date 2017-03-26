@@ -18,7 +18,6 @@ class Seq2Seq(object):
             Whether to update the model, or only predict.
             Now it only supports False, but it should not be a big deal
         """
-        # TODO support decoder output is fed back into input
 
         self.max_gradient_norm = FLAGS.max_gradient_norm
         self.learning_rate = tf.Variable(float(FLAGS.learning_rate), trainable=False)
@@ -40,13 +39,10 @@ class Seq2Seq(object):
                                                       name="encoder{0}".format(i)))
         for i in range(self.buckets[-1][1] + 1):
             self.targets.append(tf.placeholder(tf.int32, shape=[None],
-                                                      name="decoder{0}".format(i)))
-            #self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
-            #                                          name="weight{0}".format(i)))
+                                               name="decoder{0}".format(i)))
 
-        self.decoder_inputs =[tf.zeros_like(self.targets[0], dtype=tf.int64, name='GO')] + self.targets[:-1]
+        self.decoder_inputs = [tf.zeros_like(self.targets[0], dtype=tf.int64, name='GO')] + self.targets[:-1]
 
-        #self.targets = [self.decoder_inputs[i + 1] for i in range(len(self.decoder_inputs) - 1)]
         self.target_weights = [tf.ones_like(label, dtype=tf.float32) for label in self.targets]
 
         self.gradient_norms = []
@@ -76,7 +72,6 @@ class Seq2Seq(object):
         """
         cprint("[*] Building model", color="yellow")
         # self._build_queues()
-
         single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
         cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
         if FLAGS.num_layers > 1:
@@ -133,7 +128,6 @@ class Seq2Seq(object):
         :return:
         """
         with tf.variable_scope(scope_name) as _:
-            # A summary for the training loss
             self.merged_summary = []
             for bucket_id in range(len(self.buckets)):
                 self.merged_summary.append(

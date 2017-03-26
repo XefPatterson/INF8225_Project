@@ -70,8 +70,9 @@ if __name__ == '__main__':
             # Select bucket for the epoch
             chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
             questions, answers = utils.get_batch(qa_pairs, bucket_lengths, chosen_bucket_id, FLAGS.batch_size)
-            out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers)
 
+            out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers)
+            # print(out[1])
             # Save losses
             summary_writer.add_summary(out[0], out[1])
 
