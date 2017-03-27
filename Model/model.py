@@ -37,12 +37,14 @@ class Seq2Seq(object):
         for i in range(self.buckets[-1][0]):
             self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                       name="encoder{0}".format(i)))
-        for i in range(self.buckets[-1][1] + 1):
+        for i in range(self.buckets[-1][1]):
             self.targets.append(tf.placeholder(tf.int32, shape=[None],
                                                name="decoder{0}".format(i)))
 
+        # decoder inputs : 'GO' + [ y1, y2, ... y_t-1 ]
         self.decoder_inputs = [tf.zeros_like(self.targets[0], dtype=tf.int64, name='GO')] + self.targets[:-1]
 
+        #Binary mask useful for padded sequences.
         self.target_weights = [tf.ones_like(label, dtype=tf.float32) for label in self.targets]
 
         self.gradient_norms = []
@@ -139,15 +141,15 @@ class Seq2Seq(object):
         encoder_size, decoder_size = self.buckets[bucket_id]
         input_feed = {self.bucket_id: bucket_id}
 
+        # Instead of an array of dim (batch_size, bucket_length),
+        # the model is passed a list of sized batch_size, containing vector of size bucket_length
         for l in range(encoder_size):
             input_feed[self.encoder_inputs[l].name] = questions[:, l]
 
+        # Same for decoder_input
         for l in range(decoder_size):
-            input_feed[self.decoder_inputs[l].name] = answers[:, l]
-            if l == decoder_size - 1:
-                input_feed[self.target_weights[decoder_size - 1].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
-            else:
-                input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l + 1], 0).astype(np.float32)
+            input_feed[self.targets[l].name] = answers[:, l]
+            input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l], 0).astype(np.float32)
 
         input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
 
@@ -185,13 +187,11 @@ class Seq2Seq(object):
 
         # Same for decoder_input
         for l in range(decoder_size):
-            input_feed[self.decoder_inputs[l].name] = answers[:, l]
-            if l == decoder_size - 1:
-                break
-            input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l + 1], 0).astype(np.float32)
+            input_feed[self.targets[l].name] = answers[:, l]
+            input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l], 0).astype(np.float32)
 
-        input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
-        input_feed[self.target_weights[decoder_size - 1].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
+        #input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
+        #input_feed[self.target_weights[decoder_size - 1].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
 
         output_feed = []
         for l in range(decoder_size):

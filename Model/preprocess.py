@@ -49,15 +49,14 @@ def parse_Cornwell_dataset():
     with open(os.path.join('Data', 'MovieQA', "idx_to_chars.pkl"), 'wb') as f:
         cPickle.dump(idx_to_chars, f, protocol=cPickle.HIGHEST_PROTOCOL)
 
-    def stringToOneHot(s, chars_to_idx, lower=True):
+    def stringToIndices(s, chars_to_idx, lower=True):
         if lower:
             s = s.lower()
 
-        v_seq = np.zeros(shape=(len(s)), dtype=np.int32)
+        v_seq = np.zeros(shape=(len(s)+1), dtype=np.int32)
         for i in range(len(s)):
             v_seq[i] = chars_to_idx.get(s[i], 1)
-
-        # v_seq[-1] = chars_to_idx(s['<EOS>'])
+        v_seq[-1] = chars_to_idx['<EOS>']
         return v_seq
 
     movieQA_folder = os.path.join('Data', 'MovieQA')
@@ -72,7 +71,7 @@ def parse_Cornwell_dataset():
     line_to_one_hot = {}
     len_sentences = []
     for line in tqdm(movie_lines_np, desc="String to character index"):
-        line_to_one_hot[line[0]] = stringToOneHot(line[-1], chars_to_idx, lower=True)
+        line_to_one_hot[line[0]] = stringToIndices(line[-1], chars_to_idx, lower=True)
         len_sentences.append(len(line_to_one_hot[line[0]]))
 
     qa_pairs = []
