@@ -76,13 +76,13 @@ class Seq2Seq(object):
         cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
         if FLAGS.num_layers > 1:
             cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers)
-
+        from seq2seq_tensorflow import seq2seq
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-            return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(
+            return seq2seq.embedding_attention_seq2seq(
                 encoder_inputs, decoder_inputs, cell,
                 num_encoder_symbols=FLAGS.vocab_size,
                 num_decoder_symbols=FLAGS.vocab_size,
-                embedding_size=FLAGS.hidden_size,
+                embedding_size=128,
                 output_projection=None,
                 feed_previous=do_decode)
 
@@ -153,53 +153,6 @@ class Seq2Seq(object):
         input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
 
         output_feed = [self.merged_summary[bucket_id],  # Summary operation
-                       self.global_step,  # Current global step
-                       self.updates[bucket_id],  # Nothing
-                       self.gradient_norms[bucket_id],  # A scalar the gradient norm
-                       self.train_losses[bucket_id]]  # Training loss, a scalar
-
-        for l in range(decoder_size):
-            # Will return a numpy array [batch_size x size_vocab x 1]. Value are not restricted to [-1, 1]
-            output_feed.append(self.train_outputs[bucket_id][l])
-
-        # outputs is a list of size (3 + decoder_size)
-        outputs = session.run(output_feed, input_feed)
-        return outputs
-
-    def forward(self, bucket_id, session):
-        """
-        Forward pass and backward
-        :param bucket_id:
-        :param session:
-        :return:
-        """
-        cprint("[*] One iteration for examples in bucket {}".format(bucket_id), color="yellow", end="")
-        # Retrieve size of sentence for this bucket
-        encoder_size, decoder_size = self.buckets[bucket_id]
-
-        # Retrieve a batch of example from the bucket {bucket_id}
-        # Ideally we should not call twice sess.run(), in one iteration, but i don't know how to sove it:'(
-        input_feed = {self.bucket_id: bucket_id}
-        questions, answers = session.run([self._questions, self._answers], input_feed)
-
-        # Instead of an array of dim (batch_size, bucket_length),
-        # the model is passed a list of sized batch_size, containing vector of size bucket_length
-        for l in range(encoder_size):
-            input_feed[self.encoder_inputs[l].name] = questions[:, l]
-
-        # Same for decoder_input
-        for l in range(decoder_size):
-            input_feed[self.decoder_inputs[l].name] = answers[:, l]
-
-            if l == decoder_size - 1:
-                break
-
-            input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l + 1], 0).astype(np.float32)
-
-        input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
-        input_feed[self.target_weights[decoder_size - 1].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
-
-        output_feed = [self.merged_summary_op,  # Summary operation
                        self.global_step,  # Current global step
                        self.updates[bucket_id],  # Nothing
                        self.gradient_norms[bucket_id],  # A scalar the gradient norm
