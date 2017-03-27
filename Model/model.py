@@ -151,7 +151,7 @@ class Seq2Seq(object):
             input_feed[self.targets[l].name] = answers[:, l]
             input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l], 0).astype(np.float32)
 
-        input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
+        #input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
 
         output_feed = [self.merged_summary[bucket_id],  # Summary operation
                        self.global_step,  # Current global step
