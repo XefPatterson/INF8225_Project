@@ -76,9 +76,8 @@ class Seq2Seq(object):
         cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
         if FLAGS.num_layers > 1:
             cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers)
-        from seq2seq_tensorflow import seq2seq
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-            return seq2seq.embedding_attention_seq2seq(
+            return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(
                 encoder_inputs, decoder_inputs, cell,
                 num_encoder_symbols=FLAGS.vocab_size,
                 num_decoder_symbols=FLAGS.vocab_size,
