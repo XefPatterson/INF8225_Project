@@ -6,10 +6,19 @@ import random
 import nltk
 import itertools
 from collections import defaultdict
+import pickle
+from termcolor import cprint
 
 
 bucket_lengths_chars = [(10,10), (25,25), (50,50), (100,100), (150,150)]
-bucket_lengths_words = [(2,2), (4,4), (8,8), (16,16), (30,30)]
+bucket_lengths_words = [(2,2), (6,6), (13,13), (26,26), (39,39)] # See what links buckets lengths for words and chars below
+
+"""
+BUCKET_LENGTHS EXPLANATION FOR WORDS
+We have a word vocabulary of the 8000 most frequent words in cornell dataset.
+We use the average length of a word weighted by its frequency (which is 3.8), 
+  to make a correspondance between bucket_lengths_chars and bucket_lengths_words
+"""
 
 
 def create_buckets(qa_pairs, bucket_lengths):
@@ -301,6 +310,9 @@ def parse_Cornwell_dataset_into_words():
         freq_dist = nltk.FreqDist(itertools.chain(*tokenized_sentences))
         # get vocabulary of 'vocab_size' most used words
         vocab = freq_dist.most_common(vocab_size)
+        with open('words.pkl', 'wb') as f:
+            pickle.dump(vocab, f)
+
         # index2word
         index2word = ['_'] + [UNK] + [ x[0] for x in vocab ]
         # word2index
@@ -468,6 +480,6 @@ MAIN
 """
 
 if __name__ == '__main__':
-    parse_Cornwell_dataset_into_chars()
     parse_Cornwell_dataset_into_words()
+    parse_Cornwell_dataset_into_chars()
 
