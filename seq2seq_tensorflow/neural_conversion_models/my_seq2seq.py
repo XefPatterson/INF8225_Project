@@ -80,33 +80,43 @@ class Decoder:
                  do_attention,
                  embedding_size,
                  share_embedding_with_encoder,
-                 output_projection):
-        """
-        Simple decoder wrapper
-        :param name:
-        :param num_symbols:
-        :param inputs:
-        :param cell:
-        :param beam_size:
-        :param beam_search:
-        :param do_attention:
-        :param embedding_size:
-        :param share_embedding_with_encoder:
-        :param output_projection:
-        """
+                 output_projection,
+                 train_encoder_weight):
+        # Name of the decoder (use for variable scope)
         self.name = name
+        # Type of cell
         self.cell = cell  # TODO: work only with GRU cell because they contains one state vector and I admit it in the attention function
+        # Size of the beam search
         self.beam_size = beam_size
+        # Decoder inputs
         self.decoder_inputs = inputs
+        # Size of the vocabulary
         self.nb_symbols = num_symbols
+        # Boolean, True if do beam search
         self.beam_search = beam_search
+        # Boolean True if do attention mechanism on encoder input
         self.do_attention = do_attention
+        # Size of the input embedding
         self.embedding_size = embedding_size
+        # TODO Not use yet (because nb_symbols is small)
         self.output_projection = output_projection
+        # Boolean, True, if embedding dictionary is share with the encoder
         self.share_embedding_with_encoder = share_embedding_with_encoder
+        # Boolean, True if weights of the encoder is trained with the decoder loss
+        self.train_encoder_weight = train_encoder_weight
 
         # Init values, will be filled when calling seq2seq
         self.output = None
+        self.train_fn = None
+        self.loss = None
+        # TODO (how to implement input)
+        self.target = None
+        self.weights = None
+
+        self.global_step = tf.Variable(0, trainable=False)
+        self.is_training = tf.placeholder(tf.bool)
+
+
         if output_projection is False:
             self.cell = tf.contrib.rnn.OutputProjectionWrapper(self.cell, self.nb_symbols)
 
@@ -122,7 +132,7 @@ def _extract_beam_search(embedding, beam_size, num_symbols, embedding_size):
         probs = tf.log(tf.nn.softmax(prev))
 
         if i > 1:
-            # log_beam_probs[-1] is of shape (batch_size x beam_size and it contains the probability
+            # log_beam_probs[-1] is of shape (batch_size x beam_size and it contains the previous probability
             # Sum the accumulated probability with the last probability
             probs = tf.reshape(probs + log_beam_probs[-1],
                                [-1, beam_size * num_symbols])
@@ -169,7 +179,8 @@ def beam_attention_decoder(decoder_inputs,
                            output_size,
                            loop_function,
                            initial_state,
-                           beam_size):
+                           beam_size,
+                           is_training):
     with vs.variable_scope("attention_decoder"):
         # Size of the batch
         batch_size = tf.shape(decoder_inputs[0])[0]
@@ -239,9 +250,10 @@ def beam_attention_decoder(decoder_inputs,
                 with vs.variable_scope("loop_function", reuse=True):
                     # Required that prev has already been computed at least one (i >= 1)
                     if prev is not None:
-                        inp = loop_function(prev, i, log_beam_probs, beam_path, beam_symbols)
+                        inp = tf.cond(is_training, lambda: inp,
+                                      lambda: loop_function(prev, i, log_beam_probs, beam_path, beam_symbols))
 
-            # Retrieve the length of the embedding input
+            # Retrieve the length of the decoder embedding input
             input_size = inp.get_shape().as_list()[1]
 
             # Linear combination with bias without activation function
@@ -266,7 +278,7 @@ def beam_attention_decoder(decoder_inputs,
                     fully_connected(tf.concat([cell_output, attns], axis=1), output_size, activation_fn=None))
 
             if loop_function is not None:
-                # Usefull only for attention mechanism
+                # Useful only for attention mechanism
                 prev = output
             if i == 0:
                 # If num_layers > 1, then replicate every state at each layer so that batch_size become batch_size x beam_size
@@ -284,8 +296,39 @@ def beam_attention_decoder(decoder_inputs,
             outputs.append(tf.argmax(output, dimension=1))
 
     # Return outputs, current decoder state, beam_path, beam_symbol
-    return outputs, state, tf.reshape(tf.concat(beam_path, 0), [-1, beam_size]), tf.reshape(tf.concat(beam_symbols, 0),
-                                                                                            [-1, beam_size])
+    return outputs, state, beam_path, beam_symbols
+
+
+def beam_rnn_decoder(decoder_inputs,
+                     initial_state,
+                     cell,
+                     output_size,
+                     loop_function,
+                     is_training,
+                     scope=None):
+    with vs.variable_scope(scope or "rnn_decoder"):
+        state = initial_state
+        outputs = []
+        prev = None
+
+        log_beam_probs, beam_path, beam_symbols = [], [], []
+        for i, inp in enumerate(decoder_inputs):
+            if i > 0:
+                vs.get_variable_scope().reuse_variables()
+            if loop_function is not None and prev is not None:
+                with vs.variable_scope("loop_function", reuse=True):
+                    inp = tf.cond(is_training, lambda: inp,
+                                  lambda: loop_function(prev, i, log_beam_probs, beam_path, beam_symbols))
+
+            output, state = cell(inp, state)
+            output = fully_connected(output, output_size)
+
+            outputs.append(tf.argmax(output, dimension=1))
+
+            if loop_function is not None:
+                prev = output
+
+    return outputs, state
 
 
 def rnn_decoder(decoder_inputs,
@@ -295,8 +338,9 @@ def rnn_decoder(decoder_inputs,
                 nb_symbols,
                 embedding_size,
                 cell,
-                beam_search=True,
-                beam_size=10):
+                beam_search,
+                beam_size,
+                is_training):
     with vs.variable_scope("embedding_attention_decoder"):
         if beam_search:
             loop_function = _extract_beam_search(embeddings,
@@ -306,7 +350,7 @@ def rnn_decoder(decoder_inputs,
         else:
             loop_function = _extract_argmax_and_embed(embeddings)
 
-        if beam_search:
+        if beam_search and (attention_states is not None):
             return beam_attention_decoder(
                 decoder_inputs=decoder_inputs,
                 attention_states=attention_states,
@@ -314,7 +358,8 @@ def rnn_decoder(decoder_inputs,
                 beam_size=beam_size,
                 initial_state=initial_state,
                 cell=cell,
-                output_size=cell.output_size)
+                output_size=cell.output_size,
+                is_training=is_training)
         elif attention_states is not None:
             return tf.contrib.legacy_seq2seq.attention_decoder(
                 decoder_inputs,
@@ -325,11 +370,63 @@ def rnn_decoder(decoder_inputs,
                 num_heads=1,
                 loop_function=loop_function,
                 initial_state_attention=False)
+        elif beam_search:
+            pass
         else:
             return tf.contrib.legacy_seq2seq.rnn_decoder(decoder_inputs,
                                                          initial_state,
                                                          cell,
                                                          loop_function)
+
+
+def sequence_loss_by_example(decoder,
+                             average_across_timesteps=True,
+                             average_accross_batch=True):
+    # TODO decoder add target + weights parameters
+    logits = decoder.output
+    targets = decoder.target
+    weights = decoder.weights
+    if len(targets) != len(logits) or len(weights) != len(logits):
+        raise ValueError("Lengths of logits, weights, and targets must be the same "
+                         "%d, %d, %d." % (len(logits), len(weights), len(targets)))
+    with ops.name_scope(None, "sequence_loss_by_example",
+                        logits + targets + weights):
+        log_perp_list = []
+        for logit, target, weight in zip(logits, targets, weights):
+            target = array_ops.reshape(target, [-1])
+            crossent = nn_ops.sparse_softmax_cross_entropy_with_logits(
+                labels=target, logits=logit)
+            log_perp_list.append(crossent * weight)
+        log_perps = math_ops.add_n(log_perp_list)
+        if average_across_timesteps:
+            total_size = math_ops.add_n(weights)
+            total_size += 1e-12  # Just to avoid division by 0 for all-0 weights.
+            log_perps /= total_size
+    cost = math_ops.reduce_sum(log_perps)
+    if average_accross_batch:
+        cost /= math_ops.cast(array_ops.shape(targets[0])[0], cost.dtype)
+    return cost
+
+
+def loss_per_decoder(decoders, optimizer=tf.train.AdamOptimizer()):
+    all_variables = tf.trainable_variables()
+
+    for decoder in decoders:
+        decoder.loss = sequence_loss_by_example(decoder)
+
+        decoder_variables = [v for v in all_variables if v.name.contains("one2many_decoder_" + str(decoder.name))]
+        # Retrieve encoder parameters
+        if decoder.train_encoder_weight:
+            decoder_variables.extend(
+                [v for v in all_variables if v.name.contains("encoder" + str(decoder.name))])
+
+        if decoder.clip_gradient:
+            # Compute gradients
+            gradients = tf.gradients(decoder.loss, decoder_variables, aggregation_method=2)
+
+            # Training function
+            decoder.train_fn = optimizer.apply_gradients(zip(gradients, decoder_variables),
+                                                         global_step=decoder.global_step)
 
 
 def seq2seq(encoder_inputs,
@@ -339,27 +436,25 @@ def seq2seq(encoder_inputs,
             decoders
             ):
     with vs.variable_scope("my_seq2seq"):
+        with vs.variable_scope("encoder"):
+            encoder_inputs, encoder_embedding = embedded_sequence(encoder_inputs,
+                                                                  num_encoder_symbols,
+                                                                  embedding_size_encoder)
+            # Compute the length of the encoder
+            length = length_sequence(encoder_inputs)
 
-        encoder_inputs, encoder_embedding = embedded_sequence(encoder_inputs,
-                                                              num_encoder_symbols,
-                                                              embedding_size_encoder)
-        # Compute the length of the encoder
-        length = length_sequence(encoder_inputs)
+            do_attention = any([d.do_attention for d in decoders])
+            attention_states = None
 
-        do_attention = any([d.do_attention for d in decoders])
-        attention_states = None
-        # If the encoder is bidirectional
+            encoder_outputs, encoder_states = tf.nn.dynamic_rnn(
+                cell=encoder_cell_fw,
+                inputs=encoder_inputs,
+                sequence_length=length,
+                dtype=tf.float32,
+                swap_memory=True)
 
-        encoder_outputs, encoder_states = tf.nn.dynamic_rnn(
-            cell=encoder_cell_fw,
-            inputs=encoder_inputs,
-            sequence_length=length,
-            dtype=tf.float32,
-            swap_memory=True)
-
-        if do_attention:
-            attention_states = encoder_outputs
-            # print(gs(attention_states))
+            if do_attention:
+                attention_states = encoder_outputs
 
         # Decoder
         for decoder in decoders:
@@ -385,6 +480,7 @@ def seq2seq(encoder_inputs,
                                                                embedding=encoder_embedding if share_embedding_with_encoder else None)
 
                 decoder_inputs = tf.unstack(decoder_inputs)
+                # Contains output, states, beam_path, beam_symbols
                 result = rnn_decoder(decoder_inputs=decoder_inputs,
                                      attention_states=decoder_attention_states,
                                      initial_state=encoder_states,
@@ -393,8 +489,13 @@ def seq2seq(encoder_inputs,
                                      beam_size=decoder.beam_size,
                                      embedding_size=decoder.embedding_size,
                                      cell=decoder.cell,
-                                     nb_symbols=decoder.nb_symbols)
+                                     nb_symbols=decoder.nb_symbols,
+                                     is_training=decoder.is_training)
+
                 decoder.outputs = result[0]
                 if decoder.beam_search:
                     decoder.beam_path = result[2]
                     decoder.beam_symbol = result[3]
+    from IPython import embed;
+    embed()
+    # print(decoder)
