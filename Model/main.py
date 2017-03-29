@@ -50,19 +50,14 @@ if __name__ == '__main__':
         bucket_lengths = data['bucket_lengths']
 
     model.FLAGS = FLAGS
-    seq2seq = model.Seq2Seq(buckets=bucket_lengths)
-    seq2seq.build()
+    seq2seq = model.Seq2Seq()
 
     sess = tf.Session()
-    saver, summary_writer = utils.restore(seq2seq, sess)
+    # saver, summary_writer = utils.restore(seq2seq, sess)
 
-    # Start queues
-    # coord = tf.train.Coordinator()
-    # tf.train.start_queue_runners(sess=sess)
-    # sess.run(seq2seq.op_starting_queue)
 
-    global_step = sess.run(seq2seq.global_step)
-
+    # global_step = sess.run(seq2seq.global_step)
+    global_step = 0
     while global_step < FLAGS.nb_epochs:
 
         # Run training iterations

@@ -70,7 +70,8 @@ class Decoder:
                  share_embedding_with_encoder,
                  output_projection,
                  train_encoder_weight,
-                 max_decoder_sequence_length):
+                 max_decoder_sequence_length,
+                 clip_gradient=False):
         # Name of the decoder (use for variable scope)
         self.name = name
         # Type of cell
@@ -93,8 +94,10 @@ class Decoder:
         self.train_encoder_weight = train_encoder_weight
         # Maximum size of a sequence length
         self.max_decoder_sequence_length = max_decoder_sequence_length
+        # Clip gradients TODO (not implemented)
+        self.clip_gradient = clip_gradient
         # Init values, will be filled when calling seq2seq
-        self.output = None
+        self.outputs = None
         self.train_fn = None
         self.loss = None
 
@@ -176,27 +179,58 @@ def _extract_argmax_and_embed(embedding):
     return loop_function
 
 
+def sequence_loss(logits,
+                  targets,
+                  weights,
+                  average_across_timesteps=True,
+                  average_accross_batch=True,
+                  sum_accross_batch=False):
+    if len(targets) != len(logits) or len(weights) != len(logits):
+        raise ValueError("Lengths of logits, weights, and targets must be the same "
+                         "%d, %d, %d." % (len(logits), len(weights), len(targets)))
+    with ops.name_scope(None, "sequence_loss_by_example",
+                        logits + targets + weights):
+        log_perp_list = []
+        for logit, target, weight in zip(logits, targets, weights):
+            target = array_ops.reshape(target, [-1])
+            crossent = nn_ops.sparse_softmax_cross_entropy_with_logits(
+                labels=target, logits=logit)
+            log_perp_list.append(crossent * weight)
+        cost = math_ops.add_n(log_perp_list)
+        if average_across_timesteps:
+            total_size = math_ops.add_n(weights)
+            total_size += 1e-12  # Just to avoid division by 0 for all-0 weights.
+            cost /= total_size
+
+    if sum_accross_batch:
+        # Sum the loss across batches
+        cost = math_ops.reduce_sum(cost)
+    if average_accross_batch:
+        # Average across batches
+        cost /= math_ops.cast(array_ops.shape(targets[0])[0], cost.dtype)
+    return cost
+
+
 def loss_per_decoder(decoders, optimizer=tf.train.AdamOptimizer()):
     all_variables = tf.trainable_variables()
 
     for decoder in decoders:
-        decoder.loss = sequence_loss(logits=decoder.output,
+        decoder.loss = sequence_loss(logits=decoder.outputs,
                                      targets=decoder.targets,
                                      weights=decoder.target_weights)
 
-        decoder_variables = [v for v in all_variables if v.name.contains("one2many_decoder_" + str(decoder.name))]
+        decoder_variables = [v for v in all_variables if "one2many_decoder_" + str(decoder.name) in v.name]
         # Retrieve encoder parameters
         if decoder.train_encoder_weight:
             decoder_variables.extend(
-                [v for v in all_variables if v.name.contains("encoder" + str(decoder.name))])
+                [v for v in all_variables if "encoder" + str(decoder.name) in v.name])
 
-        if decoder.clip_gradient:
-            # Compute gradients
-            gradients = tf.gradients(decoder.loss, decoder_variables, aggregation_method=2)
+        # Compute gradients
+        gradients = tf.gradients(decoder.loss, decoder_variables, aggregation_method=2)
 
-            # Training function
-            decoder.train_fn = optimizer.apply_gradients(zip(gradients, decoder_variables),
-                                                         global_step=decoder.global_step)
+        # Training function
+        decoder.train_fn = optimizer.apply_gradients(zip(gradients, decoder_variables),
+                                                     global_step=decoder.global_step)
 
 
 # REST OF THE CODE IS THE CORE PART
@@ -213,6 +247,67 @@ def loss_per_decoder(decoders, optimizer=tf.train.AdamOptimizer()):
 PYTHON CODE FROM ORIGINAL SEQ2SEQ ALMOST NOT MODIFIED
 
 """
+
+
+# Add save attention as parameter
+def model_with_buckets(encoder_inputs,
+                       decoder_inputs,
+                       targets,
+                       weights,
+                       buckets,
+                       seq2seq,
+                       save_attention,
+                       # If set to true, then the third output of a call to seq2seq should be an attention
+                       per_example_loss=False,
+                       name=None):
+    if len(encoder_inputs) < buckets[-1][0]:
+        raise ValueError("Length of encoder_inputs (%d) must be at least that of la"
+                         "st bucket (%d)." % (len(encoder_inputs), buckets[-1][0]))
+    if len(targets) < buckets[-1][1]:
+        raise ValueError("Length of targets (%d) must be at least that of last"
+                         "bucket (%d)." % (len(targets), buckets[-1][1]))
+    if len(weights) < buckets[-1][1]:
+        raise ValueError("Length of weights (%d) must be at least that of last"
+                         "bucket (%d)." % (len(weights), buckets[-1][1]))
+
+    all_inputs = encoder_inputs + decoder_inputs + targets + weights
+    losses = []
+    outputs = []
+    # If seq2seq model does not do attention, then attentions will stay an empty list
+    # TODO: right now in the main model, we can call embedding_rnn which return a list of output and states (size 2),
+    # TODO but in main, I defined it a lambda x, y, z, so it should raise an error if plugged
+    attentions = []
+
+    with ops.name_scope(name, "model_with_buckets", all_inputs):
+        for j, bucket in enumerate(buckets):
+            with vs.variable_scope(
+                    vs.get_variable_scope(), reuse=True if j > 0 else None):
+                rest = seq2seq(encoder_inputs[:bucket[0]],
+                               decoder_inputs[:bucket[1]])
+                outputs.append(rest[0])
+
+                if save_attention:
+                    if len(rest) < 2:
+                        raise ValueError(
+                            "Set save_attention to True, but the seq2seq model does not support attention saving")
+                    attentions.append(rest[2])
+
+                if per_example_loss:
+                    losses.append(
+                        sequence_loss(
+                            outputs[-1],
+                            targets[:bucket[1]],
+                            weights[:bucket[1]],
+                            sum_accross_batch=False))
+                else:
+                    losses.append(
+                        sequence_loss(
+                            outputs[-1],
+                            targets[:bucket[1]],
+                            weights[:bucket[1]],
+                            sum_accross_batch=True))
+
+    return outputs, losses, attentions
 
 
 # PYTHON CODE FROM ORIGINAL SEQ2SEQ ALMOST NOT MODIFIED (ADD ALL_ATTENTION LIST)
@@ -262,6 +357,7 @@ def attention_decoder(decoder_inputs,
 
         state = initial_state
 
+        # RETURN ALL_ATTENTIONS
         all_attentions = []
 
         def attention(query):
@@ -333,7 +429,7 @@ def attention_decoder(decoder_inputs,
     return outputs, state, all_attentions
 
 
-# PYTHON CODE FROM ORIGINAL SEQ2SEQ ALMOST NOT MODIFIED
+# PYTHON CODE FROM ORIGINAL SEQ2SEQ NOT MODIFIED
 def embedding_attention_decoder(decoder_inputs,
                                 initial_state,
                                 attention_states,
@@ -377,6 +473,7 @@ def embedding_attention_decoder(decoder_inputs,
             initial_state_attention=initial_state_attention)
 
 
+# PYTHON CODE FROM ORIGINAL SEQ2SEQ ALMOST NOT MODIFIED (recupere attention)
 def embedding_attention_seq2seq(encoder_inputs,
                                 decoder_inputs,
                                 cell,
@@ -591,7 +688,7 @@ def beam_attention_decoder(decoder_inputs,
                     attns = attention(get_last_state(state))
 
             # Save outputs
-            outputs.append(tf.argmax(output, dimension=1))
+            outputs.append(output)
 
     # Return outputs, current decoder state, beam_path, beam_symbol
     return outputs, state, beam_path, beam_symbols
@@ -628,12 +725,12 @@ def beam_rnn_decoder(decoder_inputs,
             output, state = cell(inp, state)
             output = fully_connected(output, output_size)
 
-            outputs.append(tf.argmax(output, dimension=1))
+            outputs.append(output)
 
             if loop_function is not None:
                 prev = output
 
-    return outputs, state
+    return outputs, state, beam_path, beam_symbols
 
 
 """
@@ -664,6 +761,7 @@ def rnn_decoder(decoder_inputs,
             loop_function = _extract_argmax_and_embed(embeddings)
 
         if beam_search and (attention_states is not None):
+            # BEAM SEARCH + ATTENTION STATES
             return beam_attention_decoder(
                 decoder_inputs=decoder_inputs,
                 attention_states=attention_states,
@@ -675,6 +773,7 @@ def rnn_decoder(decoder_inputs,
                 output_size=cell.output_size,
                 is_training=is_training)
         elif attention_states is not None:
+            # ONLY ATTENTION
             return attention_decoder(
                 decoder_inputs,
                 initial_state,
@@ -685,6 +784,7 @@ def rnn_decoder(decoder_inputs,
                 loop_function=loop_function,
                 initial_state_attention=False)
         elif beam_search:
+            # ONLY BEAM SEARCH
             return beam_rnn_decoder(decoder_inputs=decoder_inputs,
                                     initial_state=initial_state,
                                     cell=cell,
@@ -692,52 +792,20 @@ def rnn_decoder(decoder_inputs,
                                     loop_function=loop_function,
                                     is_training=is_training)
         else:
+            # NOTHING FANCY
             return tf.contrib.legacy_seq2seq.rnn_decoder(decoder_inputs,
                                                          initial_state,
                                                          cell,
                                                          loop_function)
 
 
-def sequence_loss(logits,
-                  targets,
-                  weights,
-                  average_across_timesteps=True,
-                  average_accross_batch=True,
-                  sum_accross_batch=False):
-    # TODO decoder add target + weights parameters
-    if len(targets) != len(logits) or len(weights) != len(logits):
-        raise ValueError("Lengths of logits, weights, and targets must be the same "
-                         "%d, %d, %d." % (len(logits), len(weights), len(targets)))
-    with ops.name_scope(None, "sequence_loss_by_example",
-                        logits + targets + weights):
-        log_perp_list = []
-        for logit, target, weight in zip(logits, targets, weights):
-            target = array_ops.reshape(target, [-1])
-            crossent = nn_ops.sparse_softmax_cross_entropy_with_logits(
-                labels=target, logits=logit)
-            log_perp_list.append(crossent * weight)
-        cost = math_ops.add_n(log_perp_list)
-        if average_across_timesteps:
-            total_size = math_ops.add_n(weights)
-            total_size += 1e-12  # Just to avoid division by 0 for all-0 weights.
-            cost /= total_size
-
-    if sum_accross_batch:
-        # Sum the loss across batches
-        cost = math_ops.reduce_sum(cost)
-    if average_accross_batch:
-        # Average across batches
-        cost /= math_ops.cast(array_ops.shape(targets[0])[0], cost.dtype)
-    return cost
-
-
-def My_SEQ2SEQ(encoder_inputs,
-               max_length_encoder_in_batch,
-               num_encoder_symbols,
-               embedding_size_encoder,
-               encoder_cell_fw,
-               decoders
-               ):
+def myseq2seq(encoder_inputs,
+              max_length_encoder_in_batch,
+              num_encoder_symbols,
+              embedding_size_encoder,
+              encoder_cell_fw,
+              decoders
+              ):
     with vs.variable_scope("my_seq2seq"):
         with vs.variable_scope("encoder"):
             encoder_inputs, encoder_embedding = embedded_sequence(encoder_inputs,
@@ -804,62 +872,3 @@ def My_SEQ2SEQ(encoder_inputs,
                 if decoder.beam_search:
                     decoder.beam_path = result[2]
                     decoder.beam_symbol = result[3]
-    from IPython import embed;
-    embed()
-    # print(decoder)
-
-
-def model_with_buckets(encoder_inputs,
-                       decoder_inputs,
-                       targets,
-                       weights,
-                       buckets,
-                       seq2seq,
-                       save_attention,
-                       per_example_loss=False,
-                       name=None):
-    if len(encoder_inputs) < buckets[-1][0]:
-        raise ValueError("Length of encoder_inputs (%d) must be at least that of la"
-                         "st bucket (%d)." % (len(encoder_inputs), buckets[-1][0]))
-    if len(targets) < buckets[-1][1]:
-        raise ValueError("Length of targets (%d) must be at least that of last"
-                         "bucket (%d)." % (len(targets), buckets[-1][1]))
-    if len(weights) < buckets[-1][1]:
-        raise ValueError("Length of weights (%d) must be at least that of last"
-                         "bucket (%d)." % (len(weights), buckets[-1][1]))
-
-    all_inputs = encoder_inputs + decoder_inputs + targets + weights
-    losses = []
-    outputs = []
-    attentions = []
-
-    with ops.name_scope(name, "model_with_buckets", all_inputs):
-        for j, bucket in enumerate(buckets):
-            with vs.variable_scope(
-                    vs.get_variable_scope(), reuse=True if j > 0 else None):
-                rest = seq2seq(encoder_inputs[:bucket[0]],
-                               decoder_inputs[:bucket[1]])
-                outputs.append(rest[0])
-
-                if save_attention:
-                    if len(rest) < 2:
-                        raise ValueError(
-                            "Set save_attention to True, but the seq2seq model does not support attention saving")
-                    attentions.append(rest[2])
-
-                if per_example_loss:
-                    losses.append(
-                        sequence_loss(
-                            outputs[-1],
-                            targets[:bucket[1]],
-                            weights[:bucket[1]],
-                            sum_accross_batch=False))
-                else:
-                    losses.append(
-                        sequence_loss(
-                            outputs[-1],
-                            targets[:bucket[1]],
-                            weights[:bucket[1]],
-                            sum_accross_batch=True))
-
-    return outputs, losses, attentions

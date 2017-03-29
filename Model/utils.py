@@ -52,7 +52,10 @@ def get_batch(data, buckets, bucket_id, batch_size):
     return q_pads, a_pads
 
 
-def plot_attention(questions, answers, attentions, batch_size=32, number_to_plot=1):
+def pl(questions, answers, attentions, batch_size=32, number_to_plot=1):
+    # TODO: Plot attentions
+    index_to_plot = np.random.choice(range(batch_size), number_to_plot)
+    pass
 
 
 def decrypt(questions, answers, predictions, idx_to_char, batch_size=32, number_to_decrypt=4):
