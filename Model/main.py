@@ -53,6 +53,8 @@ if __name__ == '__main__':
     seq2seq = model.Seq2Seq()
 
     sess = tf.Session()
+    group_init_ops = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+    sess.run(group_init_ops)
     # saver, summary_writer = utils.restore(seq2seq, sess)
 
 

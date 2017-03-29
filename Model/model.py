@@ -69,7 +69,6 @@ class Seq2Seq(object):
         encoder_size, decoder_size = 40, 40
 
         input_feed = {
-            self.max_encoder_sequence_length: encoder_size,
             decoder_to_use.max_length_decoder_in_batch: decoder_size,
             decoder_to_use.is_training: True
         }
@@ -85,7 +84,9 @@ class Seq2Seq(object):
 
         for l in range(decoder_size):
             output_feed.append(decoder_to_use.outputs[l])
-        
+        from IPython import embed
+
+        # embed()
         outputs = session.run(output_feed, input_feed)
         return outputs
 
@@ -111,9 +112,6 @@ class Seq2Seq(object):
         for l in range(decoder_size):
             input_feed[self.targets[l].name] = answers[:, l]
             input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l], 0).astype(np.float32)
-
-        # input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
-        # input_feed[self.target_weights[decoder_size - 1].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
 
         output_feed = []
         for l in range(decoder_size):
