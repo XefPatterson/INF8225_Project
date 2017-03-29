@@ -23,7 +23,7 @@ flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
 flags.DEFINE_integer("vocab_size", 55, "The size of the vocabulary [64]")
 flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.5]")
 
-flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [128]")
+flags.DEFINE_integer("hidden_size", 19, "Hidden size of RNN cell [128]")
 flags.DEFINE_integer("num_layers", 1, "Num of layers [1]")
 
 FLAGS = flags.FLAGS

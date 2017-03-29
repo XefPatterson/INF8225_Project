@@ -1,7 +1,8 @@
 import numpy as np
 import tensorflow as tf
-from queues import create_queues_for_bucket
 from termcolor import cprint
+from tensorflow.contrib.legacy_seq2seq import embedding_rnn_seq2seq
+from my_seq2seq import embedding_attention_seq2seq, model_with_buckets
 
 FLAGS = None
 
@@ -9,7 +10,8 @@ FLAGS = None
 class Seq2Seq(object):
     def __init__(self,
                  buckets,
-                 forward_only=False):
+                 forward_only=False,
+                 do_attention=False):
         """
         Seq2Seq model
         :param buckets: List of pairs
@@ -18,6 +20,7 @@ class Seq2Seq(object):
             Whether to update the model, or only predict.
             Now it only supports False, but it should not be a big deal
         """
+        self.seq2seq_model = embedding_attention_seq2seq if do_attention else embedding_rnn_seq2seq
 
         self.max_gradient_norm = FLAGS.max_gradient_norm
         self.learning_rate = tf.Variable(float(FLAGS.learning_rate), trainable=False)
@@ -44,7 +47,7 @@ class Seq2Seq(object):
         # decoder inputs : 'GO' + [ y1, y2, ... y_t-1 ]
         self.decoder_inputs = [tf.zeros_like(self.targets[0], dtype=tf.int64, name='GO')] + self.targets[:-1]
 
-        #Binary mask useful for padded sequences.
+        # Binary mask useful for padded sequences.
         self.target_weights = [tf.ones_like(label, dtype=tf.float32) for label in self.targets]
 
         self.gradient_norms = []
@@ -52,20 +55,8 @@ class Seq2Seq(object):
 
         self.forward_only = forward_only
 
-        # Which bucket to extract examples
-        self.bucket_id = tf.placeholder_with_default(0, [], name="bucket_id")
-
-    def _build_queues(self):
-        """
-        Build the queues
-        :return:
-        """
-        self.queues, self.op_starting_queue = create_queues_for_bucket(FLAGS.batch_size, "train", self.buckets)
-        q = tf.QueueBase.from_list(self.bucket_id, self.queues)
-
-        inputs = tf.squeeze(q.dequeue())
-        self._questions = inputs[0]
-        self._answers = inputs[1]
+        # Whether we should feed the previous output from the decoder
+        self.feed_previous = tf.placeholder(tf.bool)
 
     def build(self):
         """
@@ -78,33 +69,27 @@ class Seq2Seq(object):
         cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
         if FLAGS.num_layers > 1:
             cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers)
+
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-            return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(
-                encoder_inputs, decoder_inputs, cell,
-                num_encoder_symbols=FLAGS.vocab_size,
-                num_decoder_symbols=FLAGS.vocab_size,
-                embedding_size=128,
-                output_projection=None,
-                feed_previous=do_decode)
+            return self.seq2seq_model(encoder_inputs, decoder_inputs, cell,
+                                      num_encoder_symbols=FLAGS.vocab_size,
+                                      num_decoder_symbols=FLAGS.vocab_size,
+                                      embedding_size=128,
+                                      output_projection=None,
+                                      save_attention=True,
+                                      feed_previous=do_decode)
 
         with tf.variable_scope("seq2seq") as scope:
-            self.train_outputs, self.train_losses = tf.contrib.legacy_seq2seq.model_with_buckets(
+            self.outputs, self.losses, _ = model_with_buckets(
                 self.encoder_inputs,
                 self.decoder_inputs,
                 self.targets,
                 self.target_weights,
                 self.buckets,
-                lambda x, y: seq2seq_f(x, y, False))
+                lambda x, y, z: seq2seq_f(x, y, self.feed_previous),
+                save_attention=True)
 
             scope.reuse_variables()
-
-            self.test_outputs, self.test_losses = tf.contrib.legacy_seq2seq.model_with_buckets(
-                self.encoder_inputs,
-                self.decoder_inputs,
-                self.targets,
-                self.target_weights,
-                self.buckets,
-                lambda x, y: seq2seq_f(x, y, True))
 
         params = tf.trainable_variables()
         if not self.forward_only:
@@ -112,7 +97,7 @@ class Seq2Seq(object):
             for b in range(len(self.buckets)):
                 cprint("Constructing the forward pass for bucket {}".format(b))
 
-                gradients = tf.gradients(self.train_losses[b], params, aggregation_method=2)
+                gradients = tf.gradients(self.losses[b], params, aggregation_method=2)
                 clipped_gradients, norm = tf.clip_by_global_norm(gradients,
                                                                  self.max_gradient_norm)
                 self.gradient_norms.append(norm)
@@ -133,13 +118,11 @@ class Seq2Seq(object):
             for bucket_id in range(len(self.buckets)):
                 self.merged_summary.append(
                     tf.summary.scalar(name="training_loss_bucket_{}".format(bucket_id),
-                                      tensor=self.train_losses[bucket_id]))
-
-            tf.summary.scalar(name="bucket_id", tensor=self.bucket_id)
+                                      tensor=self.losses[bucket_id]))
 
     def forward_with_feed_dict(self, bucket_id, session, questions, answers):
         encoder_size, decoder_size = self.buckets[bucket_id]
-        input_feed = {self.bucket_id: bucket_id}
+        input_feed = {self.feed_previous: False}
 
         # Instead of an array of dim (batch_size, bucket_length),
         # the model is passed a list of sized batch_size, containing vector of size bucket_length
@@ -151,17 +134,17 @@ class Seq2Seq(object):
             input_feed[self.targets[l].name] = answers[:, l]
             input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l], 0).astype(np.float32)
 
-        #input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
+        # input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
 
         output_feed = [self.merged_summary[bucket_id],  # Summary operation
                        self.global_step,  # Current global step
                        self.updates[bucket_id],  # Nothing
                        self.gradient_norms[bucket_id],  # A scalar the gradient norm
-                       self.train_losses[bucket_id]]  # Training loss, a scalar
+                       self.losses[bucket_id]]  # Training loss, a scalar
 
         for l in range(decoder_size):
             # Will return a numpy array [batch_size x size_vocab x 1]. Value are not restricted to [-1, 1]
-            output_feed.append(self.train_outputs[bucket_id][l])
+            output_feed.append(self.outputs[bucket_id][l])
 
         # outputs is a list of size (3 + decoder_size)
         outputs = session.run(output_feed, input_feed)
@@ -177,7 +160,7 @@ class Seq2Seq(object):
         # Retrieve size of sentence for this bucket
         encoder_size, decoder_size = self.buckets[bucket_id]
 
-        input_feed = {self.bucket_id: bucket_id}
+        input_feed = {self.feed_previous: True}
         # questions, answers = session.run([self._questions, self._answers], input_feed)
 
         # Instead of an array of dim (batch_size, bucket_length),
@@ -190,12 +173,12 @@ class Seq2Seq(object):
             input_feed[self.targets[l].name] = answers[:, l]
             input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l], 0).astype(np.float32)
 
-        #input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
-        #input_feed[self.target_weights[decoder_size - 1].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
+        # input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
+        # input_feed[self.target_weights[decoder_size - 1].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
 
         output_feed = []
         for l in range(decoder_size):
-            output_feed.append(self.test_outputs[bucket_id][l])
+            output_feed.append(self.outputs[bucket_id][l])
 
         outputs = session.run(output_feed, input_feed)
         return outputs, questions, answers

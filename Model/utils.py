@@ -2,6 +2,8 @@ from termcolor import cprint
 import tensorflow as tf
 import numpy as np
 
+embedding_rnn_seq2seq = tf.contrib.legacy_seq2seq
+
 
 def restore(model, session, save_name="model/"):
     """
@@ -48,6 +50,9 @@ def get_batch(data, buckets, bucket_id, batch_size):
         q_pads[i][:q.shape[0]] = q
         a_pads[i][:a.shape[0]] = a
     return q_pads, a_pads
+
+
+def plot_attention(questions, answers, attentions, batch_size=32, number_to_plot=1):
 
 
 def decrypt(questions, answers, predictions, idx_to_char, batch_size=32, number_to_decrypt=4):
