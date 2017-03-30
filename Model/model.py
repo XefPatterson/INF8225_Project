@@ -62,14 +62,14 @@ class Seq2Seq(object):
 
         my_seq2seq.loss_per_decoder(self.all_decoders)
 
-    def forward_with_feed_dict(self, session, questions, answers):
+    def forward_with_feed_dict(self, session, questions, answers, is_training=True):
         decoder_to_use = self.all_decoders[0]
         encoder_size, decoder_size = 100, 100
 
         input_feed = {
             self.max_length_encoder_in_batch: encoder_size - 20,
             decoder_to_use.max_length_decoder_in_batch: decoder_size,
-            decoder_to_use.is_training: True
+            decoder_to_use.is_training: is_training
         }
 
         for l in range(encoder_size):
@@ -79,40 +79,12 @@ class Seq2Seq(object):
             input_feed[decoder_to_use.targets[l].name] = answers[:, l]
             input_feed[decoder_to_use.target_weights[l].name] = np.not_equal(answers[:, l], 0).astype(np.float32)
 
-        output_feed = [decoder_to_use.train_fn]
+        output_feed = []
+        if is_training:
+            output_feed.append(decoder_to_use.train_fn)
 
         for l in range(decoder_size):
             output_feed.append(decoder_to_use.outputs[l])
 
         outputs = session.run(output_feed, input_feed)
         return outputs
-
-    def predict(self, bucket_id, session, questions, answers):
-        """
-                Forward pass and backward
-                :param bucket_id:
-                :param session:
-                :return:
-                """
-        # Retrieve size of sentence for this bucket
-        encoder_size, decoder_size = self.buckets[bucket_id]
-
-        input_feed = {self.feed_previous: True}
-        # questions, answers = session.run([self._questions, self._answers], input_feed)
-
-        # Instead of an array of dim (batch_size, bucket_length),
-        # the model is passed a list of sized batch_size, containing vector of size bucket_length
-        for l in range(encoder_size):
-            input_feed[self.encoder_inputs[l].name] = questions[:, l]
-
-        # Same for decoder_input
-        for l in range(decoder_size):
-            input_feed[self.targets[l].name] = answers[:, l]
-            input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l], 0).astype(np.float32)
-
-        output_feed = []
-        for l in range(decoder_size):
-            output_feed.append(self.outputs[bucket_id][l])
-
-        outputs = session.run(output_feed, input_feed)
-        return outputs, questions, answers

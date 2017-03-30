@@ -79,8 +79,13 @@ if __name__ == '__main__':
 
         # Run testing iterations
         chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
+        chosen_bucket_id = 0
+
         questions, answers = utils.get_batch(qa_pairs, bucket_lengths, chosen_bucket_id, FLAGS.batch_size)
-        predictions, questions, answers = seq2seq.predict(chosen_bucket_id, sess, questions, answers)
+        predictions, questions, answers = seq2seq.forward_with_feed_dict(sess, questions, answers, is_training=False)
+        from IPython import embed
+
+        embed()
         # (64, 30)
 
         utils.decrypt(questions, answers, predictions, idx_to_char)
