@@ -20,7 +20,8 @@ flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 
 flags.DEFINE_float("beta1", 0.5, "Momentum term of adam [0.5]")
 flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
-flags.DEFINE_integer("vocab_size", 55, "The size of the vocabulary [64]")
+flags.DEFINE_integer("vocab_size_encoder", 8000, "The size of the vocabulary [64]")
+flags.DEFINE_integer("vocab_size_decoder", 55, "The size of the vocabulary [64]")
 flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.5]")
 
 flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [128]")
