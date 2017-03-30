@@ -134,15 +134,15 @@ class Decoder:
 
 
 def _extract_beam_search(embedding, beam_size, num_symbols, embedding_size):
-    def loop_function(prev, i, log_beam_probs, beam_path, beam_symbols):
+    def loop_function(prev, i, log_beam_probs):
         # (batch_size + I(i > 1) * beam_size) x nb_symbols
         probs = tf.log(tf.nn.softmax(prev))
 
         # log_beam_probs[-1] is of shape (batch_size x beam_size and it contains the previous probability
         # Sum the accumulated probability with the last probability
-        if len(log_beam_probs) == len(beam_path) and len(log_beam_probs) == len(beam_symbols) and len(
-                log_beam_probs) > 0:
-            probs = tf.reshape(probs + log_beam_probs[-1], [-1, beam_size * num_symbols]);
+        log_beam_probs = tf.gather(log_beam_probs, tf.range(tf.shape(probs)[0]))
+        num_columns = tf.cond(i > 1, lambda: tf.constant(beam_size), lambda: tf.constant(1))
+        probs = tf.reshape(probs + log_beam_probs, [-1, num_columns * num_symbols])
 
         # Retrieve the top #beam_size best element for a single batch.
         # If i > 1, then probs is of size batch_size x (beam_size x nb_symbols)
@@ -157,17 +157,12 @@ def _extract_beam_search(embedding, beam_size, num_symbols, embedding_size):
         # For each indices, we now know what was the previous sentences, it was used for
         beam_parent = indices // num_symbols  # Which hypothesis it came from.
 
-        # Fill the list
-        beam_symbols.append(symbols)
-        beam_path.append(beam_parent)
-        log_beam_probs.append(best_probs)
-
         # Note that gradients will not propagate through the second parameter of
         # embedding_lookup.
 
         emb_prev = tf.nn.embedding_lookup(embedding, symbols)
         emb_prev = tf.reshape(emb_prev, [-1, embedding_size])
-        return emb_prev
+        return emb_prev, best_probs, beam_parent, symbols
 
     return loop_function
 
@@ -706,6 +701,7 @@ ONLY BEAM
 def beam_rnn_decoder(decoder_inputs,
                      initial_state,
                      cell,
+                     beam_size,
                      output_size,
                      loop_function,
                      max_length_decoder_in_batch,
@@ -714,7 +710,11 @@ def beam_rnn_decoder(decoder_inputs,
     with vs.variable_scope(scope or "beam_rnn_decoder"):
         _state = initial_state
 
-        log_beam_probs, beam_path, beam_symbols = [], [], []
+        _beam_path, _beam_symbols = [
+            tf.tile(tf.expand_dims(tf.zeros_like(decoder_inputs[:, 0, 0]), axis=1), (beam_size, 1))
+            for _ in range(2)]
+        _log_beam_probs = tf.tile(tf.expand_dims(tf.zeros_like(decoder_inputs[:, 0, 0]), axis=1),
+                                  (beam_size, 1))
         outputs = []
 
         _inp = decoder_inputs[0]
@@ -724,29 +724,32 @@ def beam_rnn_decoder(decoder_inputs,
         outputs.append(_output)
         _previous = _output
 
-        init = (1, (_previous, _state))
+        init = (1, (_previous, _state, _log_beam_probs, _beam_path, _beam_symbols))
 
         condition = lambda i, _: i < max_length_decoder_in_batch
 
         def decode(i, inp_state):
-            previous, state = inp_state
+            previous, state, log_beam_probs, _, _ = inp_state
             inp = tf.gather(tf.transpose(decoder_inputs, [1, 0, 2]), i)
 
             vs.get_variable_scope().reuse_variables()
-            if previous is not None:
-                with vs.variable_scope("loop_function", reuse=True):
-                    inp = tf.cond(is_training, lambda: inp,
-                                  lambda: loop_function(previous, i, log_beam_probs, beam_path, beam_symbols))
+            with vs.variable_scope("loop_function", reuse=True):
+                loop_inp, log_beam_probs, beam_path, beam_symbols = loop_function(previous, i, log_beam_probs)
+                inp = tf.cond(is_training, lambda: inp, lambda: loop_inp)
 
             output, state = cell(inp, state)
             output = fully_connected(output, output_size)
 
             outputs.append(output)
             previous = output
-            return i + 1, (previous, state)
+            return i + 1, (previous, state, log_beam_probs, beam_path, beam_symbols)
 
-        _, (_, last_state) = tf.while_loop(condition, lambda i, previous_state: decode(i, previous_state), init)
-        return outputs, last_state, beam_path, beam_symbols
+        _, (_, all_state, _, all_beam_path, all_beam_symbols) = tf.while_loop(
+            condition, lambda i, previous_state: decode(i, previous_state), init)
+
+        from IPython import embed;
+        embed()
+        return outputs, all_state, all_beam_path, all_beam_symbols
 
 
 """
@@ -809,6 +812,7 @@ def rnn_decoder(decoder_inputs,
                                     cell=cell,
                                     output_size=cell.output_size,
                                     loop_function=loop_function,
+                                    beam_size=beam_size,
                                     max_length_decoder_in_batch=max_length_decoder_in_batch,
                                     is_training=is_training)
         else:  # NOTHING FANCY
