@@ -67,7 +67,7 @@ class Seq2Seq(object):
         encoder_size, decoder_size = 100, 100
 
         input_feed = {
-            self.max_length_encoder_in_batch: encoder_size,
+            self.max_length_encoder_in_batch: encoder_size - 20,
             decoder_to_use.max_length_decoder_in_batch: decoder_size,
             decoder_to_use.is_training: True
         }

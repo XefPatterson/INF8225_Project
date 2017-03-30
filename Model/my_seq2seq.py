@@ -138,11 +138,11 @@ def _extract_beam_search(embedding, beam_size, num_symbols, embedding_size):
         # (batch_size + I(i > 1) * beam_size) x nb_symbols
         probs = tf.log(tf.nn.softmax(prev))
 
-        if i > 1:
-            # log_beam_probs[-1] is of shape (batch_size x beam_size and it contains the previous probability
-            # Sum the accumulated probability with the last probability
-            probs = tf.reshape(probs + log_beam_probs[-1],
-                               [-1, beam_size * num_symbols])
+        # log_beam_probs[-1] is of shape (batch_size x beam_size and it contains the previous probability
+        # Sum the accumulated probability with the last probability
+        if len(log_beam_probs) == len(beam_path) and len(log_beam_probs) == len(beam_symbols) and len(
+                log_beam_probs) > 0:
+            probs = tf.reshape(probs + log_beam_probs[-1], [-1, beam_size * num_symbols]);
 
         # Retrieve the top #beam_size best element for a single batch.
         # If i > 1, then probs is of size batch_size x (beam_size x nb_symbols)
@@ -708,35 +708,45 @@ def beam_rnn_decoder(decoder_inputs,
                      cell,
                      output_size,
                      loop_function,
+                     max_length_decoder_in_batch,
                      is_training,
                      scope=None):
     with vs.variable_scope(scope or "beam_rnn_decoder"):
-        state = initial_state
-        outputs = []
-        prev = None
+        _state = initial_state
 
         log_beam_probs, beam_path, beam_symbols = [], [], []
-        for i, inp in enumerate(decoder_inputs):
-            if i > 0:
-                vs.get_variable_scope().reuse_variables()
-            if loop_function is not None and prev is not None:
+        outputs = []
+
+        _inp = decoder_inputs[0]
+        _output, _state = cell(_inp, _state)
+        _output = fully_connected(_output, output_size)
+
+        outputs.append(_output)
+        _previous = _output
+
+        init = (1, (_previous, _state))
+
+        condition = lambda i, _: i < max_length_decoder_in_batch
+
+        def decode(i, inp_state):
+            previous, state = inp_state
+            inp = tf.gather(tf.transpose(decoder_inputs, [1, 0, 2]), i)
+
+            vs.get_variable_scope().reuse_variables()
+            if previous is not None:
                 with vs.variable_scope("loop_function", reuse=True):
                     inp = tf.cond(is_training, lambda: inp,
-                                  lambda: loop_function(prev, i, log_beam_probs, beam_path, beam_symbols))
-
-            # inp = tf.Print(inp, [tf.shape(inp)], "input")
-            #
-            # inp = tf.Print(inp, [tf.shape(state)], "state")
+                                  lambda: loop_function(previous, i, log_beam_probs, beam_path, beam_symbols))
 
             output, state = cell(inp, state)
             output = fully_connected(output, output_size)
 
             outputs.append(output)
+            previous = output
+            return i + 1, (previous, state)
 
-            if loop_function is not None:
-                prev = output
-
-    return outputs, state, beam_path, beam_symbols
+        _, (_, last_state) = tf.while_loop(condition, lambda i, previous_state: decode(i, previous_state), init)
+        return outputs, last_state, beam_path, beam_symbols
 
 
 """
@@ -755,6 +765,7 @@ def rnn_decoder(decoder_inputs,
                 cell,
                 beam_search,
                 max_length_encoder_in_batch,
+                max_length_decoder_in_batch,
                 beam_size,
                 is_training):
     with vs.variable_scope("embedding_attention_decoder"):
@@ -775,6 +786,7 @@ def rnn_decoder(decoder_inputs,
                 beam_size=beam_size,
                 initial_state=initial_state,
                 max_length_encoder_in_batch=max_length_encoder_in_batch,
+                max_length_decoder_in_batch=max_length_decoder_in_batch,
                 cell=cell,
                 output_size=cell.output_size,
                 is_training=is_training)
@@ -787,6 +799,7 @@ def rnn_decoder(decoder_inputs,
                 cell,
                 output_size=None,
                 num_heads=1,
+                max_length_decoder_in_batch=max_length_decoder_in_batch,
                 loop_function=loop_function,
                 initial_state_attention=False)
         elif beam_search:
@@ -796,9 +809,9 @@ def rnn_decoder(decoder_inputs,
                                     cell=cell,
                                     output_size=cell.output_size,
                                     loop_function=loop_function,
+                                    max_length_decoder_in_batch=max_length_decoder_in_batch,
                                     is_training=is_training)
-        else:
-            # NOTHING FANCY
+        else:  # NOTHING FANCY
             return tf.contrib.legacy_seq2seq.rnn_decoder(decoder_inputs,
                                                          initial_state,
                                                          cell,
@@ -818,12 +831,13 @@ def myseq2seq(encoder_inputs,
             encoder_inputs, encoder_embedding = embedded_sequence(encoder_inputs,
                                                                   num_encoder_symbols,
                                                                   embedding_size_encoder)
-            from IPython import embed;
-            embed()
-            # encoder_inputs = tf.transpose(encoder_inputs, [1, 0, 2])
-            # encoder_inputs = tf.Print(encoder_inputs, [tf.shape(encoder_inputs)], "encoder_inputs")
-            # encoder_inputs = tf.gather(encoder_inputs, [tf.range(max_length_encoder_in_batch)])
-            # encoder_inputs = tf.Print(encoder_inputs, [tf.shape(encoder_inputs)], "encoder_inputs")
+
+            encoder_inputs = tf.transpose(encoder_inputs, [1, 0, 2])
+            encoder_inputs = tf.Print(encoder_inputs, [tf.shape(encoder_inputs)], "encoder_inputs")
+
+            encoder_inputs = tf.gather(encoder_inputs, tf.range(max_length_encoder_in_batch))
+            encoder_inputs = tf.Print(encoder_inputs, [tf.shape(encoder_inputs)], "encoder_inputs")
+            encoder_inputs = tf.transpose(encoder_inputs, [1, 0, 2])
 
             # Compute the length of the encoder
             length = length_sequence(encoder_inputs)
@@ -866,7 +880,6 @@ def myseq2seq(encoder_inputs,
                                                                decoder.embedding_size,
                                                                embedding=encoder_embedding if share_embedding_with_encoder else None)
 
-                decoder_inputs = tf.unstack(decoder_inputs, axis=1)
                 # print(len(decoder_inputs))
 
                 # Contains output, states, beam_path, beam_symbols
@@ -880,7 +893,8 @@ def myseq2seq(encoder_inputs,
                                      cell=decoder.cell,
                                      nb_symbols=decoder.nb_symbols,
                                      is_training=decoder.is_training,
-                                     max_length_encoder_in_batch=max_length_encoder_in_batch)
+                                     max_length_encoder_in_batch=max_length_encoder_in_batch,
+                                     max_length_decoder_in_batch=decoder.max_length_decoder_in_batch)
 
                 decoder.outputs = result[0]
                 if decoder.beam_search:
