@@ -10,7 +10,7 @@ import utils
 
 flags = tf.app.flags
 flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
-flags.DEFINE_integer("nb_iter_per_epoch", 100, "Epoch to train [100]")
+flags.DEFINE_integer("nb_iter_per_epoch", 1000, "Epoch to train [100]")
 
 flags.DEFINE_integer("out_frequency", 200, "Output frequency")
 flags.DEFINE_float("learning_rate", 0.0002, "Learning rate of for adam [0.0001")
@@ -24,7 +24,7 @@ flags.DEFINE_integer("vocab_size", 55, "The size of the vocabulary [64]")
 flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.5]")
 
 flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [128]")
-flags.DEFINE_integer("num_layers", 1, "Num of layers [1]")
+flags.DEFINE_integer("num_layers", 3, "Num of layers [1]")
 
 FLAGS = flags.FLAGS
 
@@ -33,14 +33,6 @@ if __name__ == '__main__':
         idx_to_char = pickle.load(f)
 
     file_name = os.path.dirname(os.path.abspath(__file__))
-    """
-    path_to_save_example = os.path.join(file_name, os.pardir, "Examples", "stat_example_file.pkl")
-    if not os.path.exists(path_to_save_example):
-        import tf_records
-        tf_records.create_tf_examples(_buckets, saved_stats_for_set=True)
-    with open(path_to_save_example, 'rb') as f:
-        size_tf_records = pickle.load(f)
-    """
 
     # Load data in RAM:
     with open(os.path.join('..', 'Data', 'MovieQA', 'QA_Pair_Buckets.pkl'), 'rb') as f:
@@ -67,7 +59,7 @@ if __name__ == '__main__':
 
         # Run training iterations
         for _ in trange(FLAGS.nb_iter_per_epoch, leave=False):
-            # Select bucket for the epoch
+            # Select bucket for the iteration
             chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
             questions, answers = utils.get_batch(qa_pairs, bucket_lengths, chosen_bucket_id, FLAGS.batch_size)
 
@@ -76,8 +68,10 @@ if __name__ == '__main__':
             # Save losses
             summary_writer.add_summary(out[0], out[1])
 
+        print("Epoch done. \nSaving model")
         # Save model
         saver.save(sess, "model/model", global_step)
+        print("Save done.\n")
 
         # Run testing iterations
         chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)

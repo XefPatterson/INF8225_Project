@@ -72,8 +72,7 @@ class Seq2Seq(object):
         Build the model
         :return:
         """
-        cprint("[*] Building model", color="yellow")
-        # self._build_queues()
+        cprint("[*] Building model (G)", color="yellow")
         single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
         cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
         if FLAGS.num_layers > 1:
@@ -106,6 +105,33 @@ class Seq2Seq(object):
                 self.buckets,
                 lambda x, y: seq2seq_f(x, y, True))
 
+        #cprint("[*] Building model (D)", color="yellow")
+        # Question encoder :
+        #single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
+        #disc_q_cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
+        #if FLAGS.num_layers > 1:
+        #    disc_q_cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers)
+        #disc_q_outputs, disc_q_states = tf.nn.dynamic_rnn(
+        #    cell=disc_q_cell,
+        #    inputs=self.encoder_inputs, # TODO, we need a 2D tensor instead of list
+        #    sequence_length=length, #TODO use length
+        #    dtype=tf.float32,
+        #    swap_memory=True)
+
+        # TODO: Combine Real and Fake answers into a single minibatch
+
+        # TODO: get char/word embeddings of real/fake inputs
+
+        # TODO: take last state or output question encoder and concat to each embedding_t
+
+        # TODO: Feed this to a "basic" stacked gru/lstm
+
+        # TODO: use softmax to classify each timestep as real/fake.
+
+        # TODO: define optimization for D and for G
+
+
+        # Optimization :
         params = tf.trainable_variables()
         if not self.forward_only:
             opt = tf.train.AdamOptimizer(self.learning_rate)
@@ -189,9 +215,6 @@ class Seq2Seq(object):
         for l in range(decoder_size):
             input_feed[self.targets[l].name] = answers[:, l]
             input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l], 0).astype(np.float32)
-
-        #input_feed[self.decoder_inputs[decoder_size].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
-        #input_feed[self.target_weights[decoder_size - 1].name] = np.zeros_like(answers[:, 0], dtype=np.int64)
 
         output_feed = []
         for l in range(decoder_size):
