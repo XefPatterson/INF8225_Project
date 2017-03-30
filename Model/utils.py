@@ -39,12 +39,14 @@ def get_random_bucket_id_pkl(bucket_sizes):
     return bucket_id
 
 
-def get_batch(data, buckets, bucket_id, batch_size):
+# TODO: remove default value to decoder length and encoder length + not authorized bucket length larger than max_decoder and max_encoder
+def get_batch(data, buckets, bucket_id, batch_size, max_encoder_length=100, max_decoder_length=100):
     indices = np.random.choice(len(data[bucket_id]), size=batch_size)
     pairs = np.array(data[bucket_id])[indices]
 
-    q_pads = np.zeros([batch_size, buckets[bucket_id][0]])
-    a_pads = np.zeros([batch_size, buckets[bucket_id][1]])
+    # Made some changes HERE !!
+    q_pads = np.zeros([batch_size, max_encoder_length])
+    a_pads = np.zeros([batch_size, max_decoder_length])
 
     for i, (q, a) in enumerate(pairs):
         q_pads[i][:q.shape[0]] = q

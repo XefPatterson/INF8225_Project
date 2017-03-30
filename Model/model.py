@@ -1,6 +1,5 @@
 import numpy as np
 import tensorflow as tf
-from termcolor import cprint
 import my_seq2seq
 import copy
 
@@ -42,7 +41,7 @@ class Seq2Seq(object):
                                       cell=cell,
                                       beam_size=10,
                                       beam_search=True,
-                                      do_attention=True,
+                                      do_attention=False,
                                       embedding_size=embedding_size_decoder,
                                       share_embedding_with_encoder=False,
                                       output_projection=False,
@@ -62,13 +61,13 @@ class Seq2Seq(object):
                              decoders=self.all_decoders)
 
         my_seq2seq.loss_per_decoder(self.all_decoders)
-        # COMPILE UP TO HERE !! WOUHOUHOU !!
 
-    def forward_with_feed_dict(self, bucket_id, session, questions, answers):
+    def forward_with_feed_dict(self, session, questions, answers):
         decoder_to_use = self.all_decoders[0]
-        encoder_size, decoder_size = 40, 40
+        encoder_size, decoder_size = 100, 100
 
         input_feed = {
+            self.max_length_encoder_in_batch: encoder_size,
             decoder_to_use.max_length_decoder_in_batch: decoder_size,
             decoder_to_use.is_training: True
         }
@@ -84,9 +83,7 @@ class Seq2Seq(object):
 
         for l in range(decoder_size):
             output_feed.append(decoder_to_use.outputs[l])
-        from IPython import embed
 
-        # embed()
         outputs = session.run(output_feed, input_feed)
         return outputs
 

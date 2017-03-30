@@ -52,6 +52,8 @@ def embedded_sequence(inputs,
             embedding = vs.get_variable("embedding", [num_symbols, embedding_size],
                                         initializer=initializer,
                                         dtype=tf.float32)
+            if isinstance(inputs, list):
+                inputs = tf.stack(inputs, 1)
 
         # transform encoder_inputs
         return tf.nn.embedding_lookup(
@@ -105,11 +107,11 @@ class Decoder:
         self.global_step = tf.Variable(0, trainable=False)
         # Tensor bool
         # (TODO: should also be used for dropout, dropout is currently set in the test_main with a DropoutWrapper)
-        # but it is currenlty used to set the beam search (Beam search only works at testing time)
-        self.is_training = tf.placeholder(tf.bool)
+        # but it is currently used to set the beam search (Beam search only works at testing time)
+        self.is_training = tf.placeholder(tf.bool, name="is_training")
 
         # Placeholder, maximum length of every sequence in the batch! Must be feed
-        self.max_length_decoder_in_batch = tf.placeholder(tf.int32)
+        self.max_length_decoder_in_batch = tf.placeholder(tf.int32, name="max_length_in_batch")
 
         self.targets = []
         self.decoder_inputs = []
@@ -722,6 +724,10 @@ def beam_rnn_decoder(decoder_inputs,
                     inp = tf.cond(is_training, lambda: inp,
                                   lambda: loop_function(prev, i, log_beam_probs, beam_path, beam_symbols))
 
+            # inp = tf.Print(inp, [tf.shape(inp)], "input")
+            #
+            # inp = tf.Print(inp, [tf.shape(state)], "state")
+
             output, state = cell(inp, state)
             output = fully_connected(output, output_size)
 
@@ -808,9 +814,17 @@ def myseq2seq(encoder_inputs,
               ):
     with vs.variable_scope("my_seq2seq"):
         with vs.variable_scope("encoder"):
+            # encoder_inputs has a shape [batch_size, max_encode_sequence_length, encoder_emebdding_size]
             encoder_inputs, encoder_embedding = embedded_sequence(encoder_inputs,
                                                                   num_encoder_symbols,
                                                                   embedding_size_encoder)
+            from IPython import embed;
+            embed()
+            # encoder_inputs = tf.transpose(encoder_inputs, [1, 0, 2])
+            # encoder_inputs = tf.Print(encoder_inputs, [tf.shape(encoder_inputs)], "encoder_inputs")
+            # encoder_inputs = tf.gather(encoder_inputs, [tf.range(max_length_encoder_in_batch)])
+            # encoder_inputs = tf.Print(encoder_inputs, [tf.shape(encoder_inputs)], "encoder_inputs")
+
             # Compute the length of the encoder
             length = length_sequence(encoder_inputs)
 

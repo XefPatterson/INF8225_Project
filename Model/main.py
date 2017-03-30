@@ -19,7 +19,7 @@ flags.DEFINE_float("learning_rate_decay_factor", 0.96, "Learning rate decay [0.9
 flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 
 flags.DEFINE_float("beta1", 0.5, "Momentum term of adam [0.5]")
-flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
+flags.DEFINE_integer("batch_size", 16, "The size of batch images [64]")
 flags.DEFINE_integer("vocab_size", 55, "The size of the vocabulary [64]")
 flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.5]")
 
@@ -66,15 +66,16 @@ if __name__ == '__main__':
         for _ in trange(FLAGS.nb_iter_per_epoch, leave=False):
             # Select bucket for the epoch
             chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
+            chosen_bucket_id = 0
             questions, answers = utils.get_batch(qa_pairs, bucket_lengths, chosen_bucket_id, FLAGS.batch_size)
 
-            out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers)
+            out = seq2seq.forward_with_feed_dict(sess, questions, answers)
             # print(out[1])
             # Save losses
-            summary_writer.add_summary(out[0], out[1])
+            # summary_writer.add_summary(out[0], out[1])
 
         # Save model
-        saver.save(sess, "model/model", global_step)
+        # saver.save(sess, "model/model", global_step)
 
         # Run testing iterations
         chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
