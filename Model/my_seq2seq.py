@@ -127,10 +127,14 @@ class Decoder:
         if output_projection is False:
             self.cell = tf.contrib.rnn.OutputProjectionWrapper(self.cell, self.nb_symbols)
 
-        if beam_size:
+        if beam_size != 1:
             # Init values. Will be filled when calling seq2seq
             self.beam_path = None
             self.beam_symbol = None
+
+        # Check that beam_size is set to 1 if there is no beam model (beam_size is used in loss function)
+        if not self.beam_search:
+            self.beam_size = 1
 
 
 def _extract_beam_search(embedding, beam_size, num_symbols, embedding_size):
@@ -143,6 +147,8 @@ def _extract_beam_search(embedding, beam_size, num_symbols, embedding_size):
             # Sum the accumulated probability with the last probability
             probs = tf.reshape(probs + log_beam_probs[-1],
                                [-1, beam_size * num_symbols])
+        if i == 1:
+            probs = tf.gather(probs, tf.range(tf.shape(probs)[0] // beam_size))
 
         # Retrieve the top #beam_size best element for a single batch.
         # If i > 1, then probs is of size batch_size x (beam_size x nb_symbols)
@@ -184,6 +190,7 @@ def _extract_argmax_and_embed(embedding):
 def sequence_loss(logits,
                   targets,
                   weights,
+                  beam_size,
                   average_across_timesteps=True,
                   average_accross_batch=True,
                   sum_accross_batch=False):
@@ -194,6 +201,8 @@ def sequence_loss(logits,
                         logits + targets + weights):
         log_perp_list = []
         for logit, target, weight in zip(logits, targets, weights):
+            logit = tf.gather(logit, tf.range(tf.shape(logit)[0] // beam_size))
+
             target = array_ops.reshape(target, [-1])
             crossent = nn_ops.sparse_softmax_cross_entropy_with_logits(
                 labels=target, logits=logit)
@@ -219,7 +228,8 @@ def loss_per_decoder(decoders, optimizer=tf.train.AdamOptimizer()):
     for decoder in decoders:
         decoder.loss = sequence_loss(logits=decoder.outputs,
                                      targets=decoder.targets,
-                                     weights=decoder.target_weights)
+                                     weights=decoder.target_weights,
+                                     beam_size=decoder.beam_size)
 
         decoder_variables = [v for v in all_variables if "one2many_decoder_" + str(decoder.name) in v.name]
         # Retrieve encoder parameters
@@ -235,9 +245,6 @@ def loss_per_decoder(decoders, optimizer=tf.train.AdamOptimizer()):
                                                      global_step=decoder.global_step)
 
 
-# REST OF THE CODE IS THE CORE PART
-
-# TODO connect with inputs !!
 # TODO make sure computation is not dependant on the size o the batch
 # TODO model with buckets maybe
 # TODO nice attention display
@@ -350,7 +357,7 @@ def attention_decoder(decoder_inputs,
         hidden_features = []
         v = []
         attention_vec_size = attn_size  # Size of query vectors for attention.
-        for a in xrange(num_heads):
+        for a in range(num_heads):
             k = vs.get_variable("AttnW_%d" % a,
                                 [1, 1, attn_size, attention_vec_size])
             hidden_features.append(nn_ops.conv2d(hidden, k, [1, 1, 1, 1], "SAME"))
@@ -372,7 +379,7 @@ def attention_decoder(decoder_inputs,
                     if ndims:
                         assert ndims == 2
                 query = array_ops.concat(query_list, 1)
-            for a in xrange(num_heads):
+            for a in range(num_heads):
                 with vs.variable_scope("Attention_%d" % a):
                     y = linear(query, attention_vec_size, True)
                     y = array_ops.reshape(y, [-1, 1, 1, attention_vec_size])
@@ -392,7 +399,7 @@ def attention_decoder(decoder_inputs,
         batch_attn_size = array_ops.stack([batch_size, attn_size])
         attns = [
             array_ops.zeros(
-                batch_attn_size, dtype=dtype) for _ in xrange(num_heads)
+                batch_attn_size, dtype=dtype) for _ in range(num_heads)
             ]
         for a in attns:  # Ensure the second shape of attention vectors is set.
             a.set_shape([None, attn_size])
@@ -566,7 +573,6 @@ ATTENTION + BEAM
 """
 
 
-# MY SAUCE (not working because of sizes)
 def beam_attention_decoder(decoder_inputs,
                            attention_states,
                            cell,
@@ -585,7 +591,6 @@ def beam_attention_decoder(decoder_inputs,
         # Reshape for future convolution
         hidden = array_ops.reshape(attention_states, [-1, max_length_encoder_in_batch, 1, attn_size])
         hidden = tf.tile(hidden, [beam_size, 1, 1, 1])
-        hidden = tf.Print(hidden, [tf.shape(hidden)], "hidden")
 
         # Convolution weights
         k = vs.get_variable("attnW_0", [1, 1, attn_size, attn_size])
@@ -632,10 +637,12 @@ def beam_attention_decoder(decoder_inputs,
         log_beam_probs, beam_path, beam_symbols = [], [], []
 
         for i, inp in enumerate(decoder_inputs):
+            if i == 0:
+                state = [tf.tile(state[0], (beam_size, 1))]
+            inp = tf.tile(inp, (beam_size, 1))
             # Iterate over all inputs
             if i > 0:
                 vs.get_variable_scope().reuse_variables()
-            attns = tf.Print(attns, [tf.shape(attns)], "att")
 
             # If loop_function is set, we use it instead of decoder_inputs.
             with vs.variable_scope("loop_function", reuse=True):
@@ -643,7 +650,7 @@ def beam_attention_decoder(decoder_inputs,
                 if prev is not None:
                     inp = tf.cond(is_training, lambda: inp,
                                   lambda: loop_function(prev, i, log_beam_probs, beam_path, beam_symbols))
-                    inp = tf.Print(inp, [tf.shape(inp)], "inp")
+
             # Retrieve the length of the decoder embedding input
             input_size = inp.get_shape().as_list()[1]
 
@@ -701,10 +708,12 @@ ONLY BEAM
 """
 
 
+# SEEMS TO WORK
 def beam_rnn_decoder(decoder_inputs,
                      initial_state,
                      cell,
                      output_size,
+                     beam_size,
                      loop_function,
                      is_training,
                      scope=None):
@@ -714,12 +723,16 @@ def beam_rnn_decoder(decoder_inputs,
         prev = None
         log_beam_probs, beam_path, beam_symbols = [], [], []
         for i, inp in enumerate(decoder_inputs):
+            if i == 0:
+                state = [tf.tile(state[0], (beam_size, 1))]
+            inp = tf.tile(inp, (beam_size, 1))
+
             if i > 0:
                 vs.get_variable_scope().reuse_variables()
             if prev is not None:
                 with vs.variable_scope("loop_function", reuse=True):
-                    # inp = tf.cond(is_training, lambda: inp,
-                    #               lambda: loop_function(prev, i, log_beam_probs, beam_path, beam_symbols))
+                    inp = tf.cond(is_training, lambda: inp,
+                                  lambda: loop_function(prev, i, log_beam_probs, beam_path, beam_symbols))
 
             output, state = cell(inp, state)
             output = fully_connected(output, output_size)
@@ -785,6 +798,7 @@ def rnn_decoder(decoder_inputs,
             return beam_rnn_decoder(decoder_inputs=decoder_inputs,
                                     initial_state=initial_state,
                                     cell=cell,
+                                    beam_size=beam_size,
                                     output_size=cell.output_size,
                                     loop_function=loop_function,
                                     is_training=is_training)

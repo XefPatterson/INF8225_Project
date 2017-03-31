@@ -69,7 +69,8 @@ if __name__ == '__main__':
             chosen_bucket_id = 0
             questions, answers = utils.get_batch(qa_pairs, bucket_lengths, chosen_bucket_id, FLAGS.batch_size)
 
-            out = seq2seq.forward_with_feed_dict(sess, questions, answers)
+            seq2seq.forward_with_feed_dict(sess, questions, answers)
+            seq2seq.forward_with_feed_dict(sess, questions, answers, is_training=False)
             # print(out[1])
             # Save losses
             # summary_writer.add_summary(out[0], out[1])
