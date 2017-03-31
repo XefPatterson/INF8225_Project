@@ -1,190 +1,13 @@
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.contrib.rnn.python.ops import core_rnn
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell
 from tensorflow.python.util import nest
 from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.contrib.layers import fully_connected
-import copy
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 import tensorflow as tf
-import math
-
-# TODO RIGHT CODE IS A TOTAL SHITTY MESS, DONT SAY YOU WERE NOT AWARE :')
-
-"""
-
-UTILITIES
-
-"""
-
-
-def gs(tensor):
-    return tensor.get_shape().as_list()
-
-
-def length_sequence(sequence):
-    """
-    @sequence: 3D tensor of shape (batch_size, sequence_length, embedding_size)
-    """
-    used = tf.sign(tf.reduce_sum(tf.abs(sequence), reduction_indices=2))
-    length = tf.reduce_sum(used, reduction_indices=1)
-    length = tf.cast(length, tf.int32)
-    return length  # vector of size (batch_size) containing sentence lengths
-
-
-def embedded_sequence(inputs,
-                      num_symbols,
-                      embedding_size,
-                      embedding=None):
-    with vs.variable_scope("embedded_sequence"):
-        if embedding is None:
-            # Embedding should have variance = 1
-            sqrt3 = math.sqrt(3)
-            initializer = init_ops.random_uniform_initializer(-sqrt3, sqrt3)
-
-            # Create embedding for the encoder symbol
-            embedding = vs.get_variable("embedding", [num_symbols, embedding_size],
-                                        initializer=initializer,
-                                        dtype=tf.float32)
-            if isinstance(inputs, list):
-                inputs = tf.stack(inputs, 1)
-
-        # transform encoder_inputs
-        return tf.nn.embedding_lookup(
-            embedding, inputs), embedding
-
-
-class Decoder:
-    def __init__(self,
-                 name,
-                 num_symbols,
-                 cell,
-                 beam_size,
-                 beam_search,
-                 do_attention,
-                 embedding_size,
-                 share_embedding_with_encoder,
-                 output_projection,
-                 train_encoder_weight,
-                 max_decoder_sequence_length,
-                 clip_gradient=False):
-        # Name of the decoder (use for variable scope)
-        self.name = name
-        # Type of cell
-        self.cell = cell  # TODO: work only with GRU cell because they contains one state vector and I admit it in the attention function
-        # Size of the beam search
-        self.beam_size = beam_size
-        # Size of the vocabulary
-        self.nb_symbols = num_symbols
-        # Boolean, True if do beam search
-        self.beam_search = beam_search
-        # Boolean True if do attention mechanism on encoder input
-        self.do_attention = do_attention
-        # Size of the input embedding
-        self.embedding_size = embedding_size
-        # TODO Not use yet (because nb_symbols is small)
-        self.output_projection = output_projection
-        # Boolean, True, if embedding dictionary is share with the encoder
-        self.share_embedding_with_encoder = share_embedding_with_encoder
-        # Boolean, True if weights of the encoder is trained with the decoder loss
-        self.train_encoder_weight = train_encoder_weight
-        # Maximum size of a sequence length
-        self.max_decoder_sequence_length = max_decoder_sequence_length
-        # Clip gradients TODO (not implemented)
-        self.clip_gradient = clip_gradient
-        # Init values, will be filled when calling seq2seq
-        self.outputs = None
-        self.train_fn = None
-        self.loss = None
-
-        # Current step
-        self.global_step = tf.Variable(0, trainable=False)
-        # Tensor bool
-        # (TODO: should also be used for dropout, dropout is currently set in the test_main with a DropoutWrapper)
-        # but it is currently used to set the beam search (Beam search only works at testing time)
-        self.is_training = tf.placeholder(tf.bool, name="is_training")
-
-        # Placeholder, maximum length of every sequence in the batch! Must be feed
-        self.max_length_decoder_in_batch = tf.placeholder(tf.int32, name="max_length_in_batch")
-
-        self.targets = []
-        self.decoder_inputs = []
-        for i in range(self.max_decoder_sequence_length):
-            self.targets.append(tf.placeholder(tf.int32, shape=[None],
-                                               name="decoder{0}".format(i)))
-
-        # decoder inputs : 'GO' + [ y1, y2, ... y_t-1 ]
-        self.decoder_inputs = [tf.zeros_like(self.targets[0], dtype=tf.int32, name='GO')] + self.targets[:-1]
-        self.target_weights = [tf.ones_like(label, dtype=tf.float32) for label in self.targets]
-
-        # It should always be false
-        if output_projection is False:
-            self.cell = tf.contrib.rnn.OutputProjectionWrapper(self.cell, self.nb_symbols)
-
-        if beam_size != 1:
-            # Init values. Will be filled when calling seq2seq
-            self.beam_path = None
-            self.beam_symbol = None
-
-        # Check that beam_size is set to 1 if there is no beam model (beam_size is used in loss function)
-        if not self.beam_search:
-            self.beam_size = 1
-
-
-def _extract_beam_search(embedding, beam_size, num_symbols, embedding_size):
-    def loop_function(prev, i, log_beam_probs, beam_path, beam_symbols):
-        # (batch_size + I(i > 1) * beam_size) x nb_symbols
-        probs = tf.log(tf.nn.softmax(prev))
-
-        if i > 1:
-            # log_beam_probs[-1] is of shape (batch_size x beam_size and it contains the previous probability
-            # Sum the accumulated probability with the last probability
-            probs = tf.reshape(probs + log_beam_probs[-1],
-                               [-1, beam_size * num_symbols])
-        if i == 1:
-            probs = tf.gather(probs, tf.range(tf.shape(probs)[0] // beam_size))
-
-        # Retrieve the top #beam_size best element for a single batch.
-        # If i > 1, then probs is of size batch_size x (beam_size x nb_symbols)
-        best_probs, indices = tf.nn.top_k(probs, beam_size)
-        indices = tf.stop_gradient(tf.squeeze(tf.reshape(indices, [-1, 1])))
-        best_probs = tf.stop_gradient(tf.reshape(best_probs, [-1, 1]))
-
-        # If i > 1, then indices contains value larger than vocab_output_size
-        # Hence, we need to reduce them
-        symbols = indices % num_symbols
-
-        # For each indices, we now know what was the previous sentences, it was used for
-        beam_parent = indices // num_symbols  # Which hypothesis it came from.
-
-        # Fill the list
-        beam_symbols.append(symbols)
-        beam_path.append(beam_parent)
-        log_beam_probs.append(best_probs)
-
-        # Note that gradients will not propagate through the second parameter of
-        # embedding_lookup.
-
-        emb_prev = tf.nn.embedding_lookup(embedding, symbols)
-        emb_prev = tf.reshape(emb_prev, [-1, embedding_size])
-        return emb_prev
-
-    return loop_function
-
-
-def _extract_argmax_and_embed(embedding):
-    def loop_function(prev, _):
-        prev_symbol = math_ops.argmax(prev, 1)
-        emb_prev = embedding_ops.embedding_lookup(embedding, prev_symbol)
-        return emb_prev
-
-    return loop_function
+from tf_utils import length_sequence, embedded_sequence, _extract_beam_search, _extract_argmax_and_embed
 
 
 def sequence_loss(logits,
@@ -192,8 +15,36 @@ def sequence_loss(logits,
                   weights,
                   beam_size,
                   average_across_timesteps=True,
-                  average_accross_batch=True,
-                  sum_accross_batch=False):
+                  sum_accross_batch=False,
+                  average_accross_batch=True):
+    """
+    Compute sequence length loss.
+
+    Compute softmax on logits, then cross_entropy.
+    Average at each timestep for every example with average_across_timesteps
+    Sum all batch example loss with sum_accross_batch
+    Average all batch example loss with average_accross_batch
+
+    This function is not relevant in the case where beam_search is used and it's not training time
+    This function is relevant in the case where beam_search is used and it's training time, and beam_size parameter is set!
+
+    :param logits: List of size max_decoder_length of tf.Tensor ((batch_size x beam_size) x vocab_size)
+        Contains all outputs during the decoding scheme
+    :param targets: List of size max_decoder_length of tf.Tensor (batch_size x 1)
+        All targets index in the dictionnary
+    :param weights: List of size max_decoder_length of tf.Tensor (batch_size x 1)
+        0 or 1 to mask the loss
+    :param beam_size: Size of the beam search
+        During training time, there is no beam search, however the graph is not dynamic, so there must as much
+        input during training and testing. Hence decoder_inputs are tilled beam_size.
+    :param average_across_timesteps: Boolean (default: True)
+        Average accross all timesteps, preserving respective length of different batch example
+    :param average_accross_batch: Boolean (default: True)
+        Average accross batch examples
+    :param sum_accross_batch: Boolean, (default: False)
+        Sum
+    :return:
+    """
     if len(targets) != len(logits) or len(weights) != len(logits):
         raise ValueError("Lengths of logits, weights, and targets must be the same "
                          "%d, %d, %d." % (len(logits), len(weights), len(targets)))
@@ -223,6 +74,18 @@ def sequence_loss(logits,
 
 
 def loss_per_decoder(decoders, optimizer=tf.train.AdamOptimizer()):
+    """
+    Method to compute all loss for every decoders.
+    It computes the loss of the decoder (cross_entropy)
+    Then it retrieve weights that are trained on (if a decoder has train_encoder_weight set to True, then all encoder weights
+    are also retrieved
+    Then it adds a train_fn to the decoder, which corresponds to the training function to call in a tf.Session
+    :param decoders: A list of Decoder
+        Every decoder used in the model.
+        Every decoder should have its parameter outputs, targets, target_weights defined
+    :param optimizer:
+    :return:
+    """
     all_variables = tf.trainable_variables()
 
     for decoder in decoders:
@@ -245,81 +108,6 @@ def loss_per_decoder(decoders, optimizer=tf.train.AdamOptimizer()):
                                                      global_step=decoder.global_step)
 
 
-# TODO make sure computation is not dependant on the size o the batch
-# TODO model with buckets maybe
-# TODO nice attention display
-# TODO nice beam search display
-
-"""
-
-
-PYTHON CODE FROM ORIGINAL SEQ2SEQ ALMOST NOT MODIFIED
-
-"""
-
-
-# Add save attention as parameter
-def model_with_buckets(encoder_inputs,
-                       decoder_inputs,
-                       targets,
-                       weights,
-                       buckets,
-                       seq2seq,
-                       save_attention,
-                       # If set to true, then the third output of a call to seq2seq should be an attention
-                       per_example_loss=False,
-                       name=None):
-    if len(encoder_inputs) < buckets[-1][0]:
-        raise ValueError("Length of encoder_inputs (%d) must be at least that of la"
-                         "st bucket (%d)." % (len(encoder_inputs), buckets[-1][0]))
-    if len(targets) < buckets[-1][1]:
-        raise ValueError("Length of targets (%d) must be at least that of last"
-                         "bucket (%d)." % (len(targets), buckets[-1][1]))
-    if len(weights) < buckets[-1][1]:
-        raise ValueError("Length of weights (%d) must be at least that of last"
-                         "bucket (%d)." % (len(weights), buckets[-1][1]))
-
-    all_inputs = encoder_inputs + decoder_inputs + targets + weights
-    losses = []
-    outputs = []
-    # If seq2seq model does not do attention, then attentions will stay an empty list
-    # TODO: right now in the main model, we can call embedding_rnn which return a list of output and states (size 2),
-    # TODO but in main, I defined it a lambda x, y, z, so it should raise an error if plugged
-    attentions = []
-
-    with ops.name_scope(name, "model_with_buckets", all_inputs):
-        for j, bucket in enumerate(buckets):
-            with vs.variable_scope(
-                    vs.get_variable_scope(), reuse=True if j > 0 else None):
-                rest = seq2seq(encoder_inputs[:bucket[0]],
-                               decoder_inputs[:bucket[1]])
-                outputs.append(rest[0])
-
-                if save_attention:
-                    if len(rest) < 2:
-                        raise ValueError(
-                            "Set save_attention to True, but the seq2seq model does not support attention saving")
-                    attentions.append(rest[2])
-
-                if per_example_loss:
-                    losses.append(
-                        sequence_loss(
-                            outputs[-1],
-                            targets[:bucket[1]],
-                            weights[:bucket[1]],
-                            sum_accross_batch=False))
-                else:
-                    losses.append(
-                        sequence_loss(
-                            outputs[-1],
-                            targets[:bucket[1]],
-                            weights[:bucket[1]],
-                            sum_accross_batch=True))
-
-    return outputs, losses, attentions
-
-
-# PYTHON CODE FROM ORIGINAL SEQ2SEQ ALMOST NOT MODIFIED (ADD ALL_ATTENTION LIST)
 def attention_decoder(decoder_inputs,
                       initial_state,
                       attention_states,
@@ -330,6 +118,20 @@ def attention_decoder(decoder_inputs,
                       dtype=None,
                       scope=None,
                       initial_state_attention=False):
+    """
+    Original code from Tensorflow. I just add a list to retrieve attention values.
+    :param decoder_inputs:
+    :param initial_state:
+    :param attention_states:
+    :param cell:
+    :param output_size:
+    :param num_heads:
+    :param loop_function:
+    :param dtype:
+    :param scope:
+    :param initial_state_attention:
+    :return:
+    """
     linear = core_rnn_cell_impl._linear
     if not decoder_inputs:
         raise ValueError("Must provide at least 1 input to attention decoder.")
@@ -438,141 +240,6 @@ def attention_decoder(decoder_inputs,
     return outputs, state, all_attentions
 
 
-# PYTHON CODE FROM ORIGINAL SEQ2SEQ NOT MODIFIED
-def embedding_attention_decoder(decoder_inputs,
-                                initial_state,
-                                attention_states,
-                                cell,
-                                num_symbols,
-                                embedding_size,
-                                num_heads=1,
-                                output_size=None,
-                                output_projection=None,
-                                feed_previous=False,
-                                update_embedding_for_previous=True,
-                                dtype=None,
-                                scope=None,
-                                initial_state_attention=False):
-    if output_size is None:
-        output_size = cell.output_size
-    if output_projection is not None:
-        proj_biases = ops.convert_to_tensor(output_projection[1], dtype=dtype)
-        proj_biases.get_shape().assert_is_compatible_with([num_symbols])
-
-    with vs.variable_scope(
-                    scope or "embedding_attention_decoder", dtype=dtype) as scope:
-
-        embedding = vs.get_variable("embedding",
-                                    [num_symbols, embedding_size])
-        loop_function = tf.contrib.legacy_seq2seq_extract_argmax_and_embed(
-            embedding, output_projection,
-            update_embedding_for_previous) if feed_previous else None
-        emb_inp = [
-            embedding_ops.embedding_lookup(embedding, i) for i in decoder_inputs
-            ]
-
-        return attention_decoder(
-            emb_inp,
-            initial_state,
-            attention_states,
-            cell,
-            output_size=output_size,
-            num_heads=num_heads,
-            loop_function=loop_function,
-            initial_state_attention=initial_state_attention)
-
-
-# PYTHON CODE FROM ORIGINAL SEQ2SEQ ALMOST NOT MODIFIED (recupere attention)
-def embedding_attention_seq2seq(encoder_inputs,
-                                decoder_inputs,
-                                cell,
-                                num_encoder_symbols,
-                                num_decoder_symbols,
-                                embedding_size,
-                                num_heads=1,
-                                output_projection=None,
-                                feed_previous=False,
-                                dtype=None,
-                                scope=None,
-                                initial_state_attention=False):
-    with vs.variable_scope(
-                    scope or "embedding_attention_seq2seq", dtype=dtype) as scope:
-        dtype = scope.dtype
-    # Encoder.
-    encoder_cell = copy.deepcopy(cell)
-    encoder_cell = core_rnn_cell.EmbeddingWrapper(
-        encoder_cell,
-        embedding_classes=num_encoder_symbols,
-        embedding_size=embedding_size)
-    encoder_outputs, encoder_state = core_rnn.static_rnn(
-        encoder_cell, encoder_inputs, dtype=dtype)
-    top_states = [
-        array_ops.reshape(e, [-1, 1, cell.output_size]) for e in encoder_outputs
-        ]
-    attention_states = array_ops.concat(top_states, 1)
-    # Decoder.
-    output_size = None
-    if output_projection is None:
-        cell = core_rnn_cell.OutputProjectionWrapper(cell, num_decoder_symbols)
-        output_size = num_decoder_symbols
-
-    if isinstance(feed_previous, bool):
-        return embedding_attention_decoder(
-            decoder_inputs,
-            encoder_state,
-            attention_states,
-            cell,
-            num_decoder_symbols,
-            embedding_size,
-            num_heads=num_heads,
-            output_size=output_size,
-            output_projection=output_projection,
-            feed_previous=feed_previous,
-            initial_state_attention=initial_state_attention)
-        # If feed_previous is a Tensor, we construct 2 graphs and use cond.
-
-    def decoder(feed_previous_bool):
-        reuse = None if feed_previous_bool else True
-        with vs.variable_scope(
-                vs.get_variable_scope(), reuse=reuse):
-            outputs, state, attention = embedding_attention_decoder(
-                decoder_inputs,
-                encoder_state,
-                attention_states,
-                cell,
-                num_decoder_symbols,
-                embedding_size,
-                num_heads=num_heads,
-                output_size=output_size,
-                output_projection=output_projection,
-                feed_previous=feed_previous_bool,
-                update_embedding_for_previous=False,
-                initial_state_attention=initial_state_attention)
-            state_list = [state]
-            if nest.is_sequence(state):
-                state_list = nest.flatten(state)
-            return outputs + state_list, attention
-
-    outputs_and_state, attention = control_flow_ops.cond(feed_previous,
-                                                         lambda: decoder(True),
-                                                         lambda: decoder(False))
-    outputs_len = len(decoder_inputs)  # Outputs length same as decoder inputs.
-    state_list = outputs_and_state[outputs_len:]
-    state = state_list[0]
-    if nest.is_sequence(encoder_state):
-        state = nest.pack_sequence_as(
-            structure=encoder_state, flat_sequence=state_list)
-    return outputs_and_state[:outputs_len], state, attention
-
-
-"""
-
-BEAM IMPLEMENTATION
-
-ATTENTION + BEAM
-"""
-
-
 def beam_attention_decoder(decoder_inputs,
                            attention_states,
                            cell,
@@ -582,6 +249,34 @@ def beam_attention_decoder(decoder_inputs,
                            initial_state,
                            beam_size,
                            is_training):
+    """
+    Implementation of beam search with attention mechanism.
+    decoder_inputs is the input of the decoder
+    attention_states is a matrix of tensor containing all vectors used for computing the attention.
+
+
+    :param decoder_inputs: List of size max_decoder_length of tf.Tensor (batch_size x embedding_size_decoder)
+        Decoder inputs
+    :param attention_states: 3D tf.Tensor of size (batch_size x max_length_encoder_in_batch x encoder.cell.output_size)
+
+    :param cell: Tensorflow RNN cell
+        YOLO
+    :param output_size: Tensor
+        Dimension of the output of the RNN cell. If the hidden vector has a dimension larger than output_size, then a
+        one layer feedforward neural network reshape it to output a vector of size output_size
+    :param max_length_encoder_in_batch: TensorShape
+        Number of vector for the attention mechanism
+    :param loop_function: Python Function TODO: refactore because this parameter is useless
+        Should not be anything else than _extract_beam_search
+    :param initial_state: Tensor of shape (batch_size, cell.state_size)
+        Initial state of the cell at timestep 0. Should not be None
+    :param beam_size: Python Scalar
+        Size of the beam search
+    :param is_training: Tensor
+        Variable to represent if we are training or testing. During training, the decoder_inputs first dimension is resized
+        to (batch_size x beam_size). It is not efficient, but it was the only way to allow beam_search at test time.
+    :return:
+    """
     with vs.variable_scope("attention_decoder"):
         # Size of the batch
         batch_size = tf.shape(decoder_inputs[0])[0]
@@ -608,6 +303,9 @@ def beam_attention_decoder(decoder_inputs,
         else:
             num_layers = 1
 
+        # RETURN ALL_ATTENTIONS
+        all_attentions = []
+
         def attention(query):
             """Put attention masks on hidden using hidden_features and query."""
             with vs.variable_scope("attention_0"):
@@ -619,6 +317,8 @@ def beam_attention_decoder(decoder_inputs,
                 s = math_ops.reduce_sum(
                     v * math_ops.tanh(features + y), [2, 3])
                 a = nn_ops.softmax(s)
+                all_attentions.append(a)
+
                 # Now calculate the attention-weighted vector d.
                 d = math_ops.reduce_sum(
                     array_ops.reshape(a, [-1, max_length_encoder_in_batch, 1, 1]) * hidden,
@@ -697,18 +397,10 @@ def beam_attention_decoder(decoder_inputs,
             # Save outputs
             outputs.append(output)
 
-    # Return outputs, current decoder state, beam_path, beam_symbol
-    return outputs, state, beam_path, beam_symbols
+    # Return outputs, current decoder state, beam_path, beam_symbol, log_beam_probs, all_attentions
+    return outputs, state, beam_path, beam_symbols, log_beam_probs, all_attentions
 
 
-"""
-
-ONLY BEAM
-
-"""
-
-
-# SEEMS TO WORK
 def beam_rnn_decoder(decoder_inputs,
                      initial_state,
                      cell,
@@ -717,6 +409,27 @@ def beam_rnn_decoder(decoder_inputs,
                      loop_function,
                      is_training,
                      scope=None):
+    """
+
+    :param decoder_inputs: List of size max_decoder_length of tf.Tensor (batch_size x embedding_size_decoder)
+        Decoder inputs
+    :param initial_state: Tensor of shape (batch_size, cell.state_size)
+        Initial state of the cell at timestep 0. Should not be None
+    :param cell: Tensorflow RNN cell
+        YOLO
+    :param output_size: Tensor
+        Dimension of the output of the RNN cell. If the hidden vector has a dimension larger than output_size, then a
+        one layer feedforward neural network reshape it to output a vector of size output_size
+    :param loop_function: Python Function
+        Should not be anything else than _extract_beam_search
+    :param beam_size: Python Scalar
+        Size of the beam search
+    :param is_training: Tensor
+        Variable to represent if we are training or testing. During training, the decoder_inputs first dimension is resized
+        to (batch_size x beam_size). It is not efficient, but it was the only way to allow beam_search at test time.
+    :param scope: TODO Don't know if it usefull
+    :return:
+    """
     with vs.variable_scope(scope or "beam_rnn_decoder"):
         state = initial_state
         outputs = []
@@ -740,7 +453,7 @@ def beam_rnn_decoder(decoder_inputs,
             outputs.append(output)
             prev = output
 
-    return outputs, state, beam_path, beam_symbols
+    return outputs, state, beam_path, beam_symbols, log_beam_probs
 
 
 """
@@ -761,6 +474,22 @@ def rnn_decoder(decoder_inputs,
                 max_length_encoder_in_batch,
                 beam_size,
                 is_training):
+    """
+    Given the function parameters, it select the model to use
+    TODO: refactor
+    :param decoder_inputs:
+    :param embeddings:
+    :param attention_states
+    :param initial_state:
+    :param nb_symbols:
+    :param embedding_size:
+    :param cell:
+    :param beam_search:
+    :param max_length_encoder_in_batch:
+    :param beam_size:
+    :param is_training:
+    :return:
+    """
     with vs.variable_scope("embedding_attention_decoder"):
         if beam_search:
             loop_function = _extract_beam_search(embeddings,
@@ -817,9 +546,29 @@ def myseq2seq(encoder_inputs,
               encoder_cell_fw,
               decoders
               ):
+    """
+    Seq2seq model implemented.
+    This is the main function. It is responsible to creating a encoder and a decoder
+    :param encoder_inputs: A list of size max_encoder_length of tf.Tensor of size (batch_size x 1)
+        The encoder inputs
+    :param max_length_encoder_in_batch: A tf.Tensor
+        Given that the encoder inputs placeholder can hold the maximum length in all batches, there is no
+        need to keep all zeros padded inputs. max_length_encoder_in_batch remove at the beginning all padded tf.Tensor
+        which are beyond the longest sequence in the batch
+    :param num_encoder_symbols: Python scalar
+        ~ Size of the encoder vocabulary
+    :param embedding_size_encoder: Python scalar
+        Size of the embeddings
+    :param encoder_cell_fw: a Tensorflow RNN cell
+        YO
+    :param decoders: A list of Decoders
+
+    :return: Nothing,
+        All decoders objects are responsible to keep their outputs, losses, training function, beam_path, and attentions
+    """
     with vs.variable_scope("my_seq2seq"):
         with vs.variable_scope("encoder"):
-            # encoder_inputs has a shape [batch_size, max_encode_sequence_length, encoder_emebdding_size]
+            # encoder_inputs has a shape [batch_size, max_encode_sequence_length, encoder_embedding_size]
             encoder_inputs, encoder_embedding = embedded_sequence(encoder_inputs,
                                                                   num_encoder_symbols,
                                                                   embedding_size_encoder)
@@ -870,7 +619,6 @@ def myseq2seq(encoder_inputs,
                                                                embedding=encoder_embedding if share_embedding_with_encoder else None)
 
                 decoder_inputs = tf.unstack(decoder_inputs, axis=1)
-                # print(len(decoder_inputs))
 
                 # Contains output, states, beam_path, beam_symbols
                 result = rnn_decoder(decoder_inputs=decoder_inputs,
@@ -889,3 +637,8 @@ def myseq2seq(encoder_inputs,
                 if decoder.beam_search:
                     decoder.beam_path = result[2]
                     decoder.beam_symbol = result[3]
+                    decoder.log_beam_probs = result[4]
+                    if decoder.do_attention:
+                        decoder.all_attentions = result[5]
+                elif decoder.do_attention:
+                    decoder.all_attentions = result[2]

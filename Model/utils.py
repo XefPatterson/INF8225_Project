@@ -39,8 +39,7 @@ def get_random_bucket_id_pkl(bucket_sizes):
     return bucket_id
 
 
-# TODO: remove default value to decoder length and encoder length + not authorized bucket length larger than max_decoder and max_encoder
-def get_batch(data, buckets, bucket_id, batch_size, max_encoder_length=100, max_decoder_length=100):
+def get_batch(data, bucket_id, batch_size, max_encoder_length, max_decoder_length):
     indices = np.random.choice(len(data[bucket_id]), size=batch_size)
     pairs = np.array(data[bucket_id])[indices]
 
@@ -55,8 +54,28 @@ def get_batch(data, buckets, bucket_id, batch_size, max_encoder_length=100, max_
 
 
 def pl(questions, answers, attentions, batch_size=32, number_to_plot=1):
-    # TODO: Plot attentions
+    """
+    Plot attentions mechanism
+    :param questions:
+    :param answers:
+    :param attentions:
+    :param batch_size:
+    :param number_to_plot:
+    :return:
+    """
     index_to_plot = np.random.choice(range(batch_size), number_to_plot)
+    pass
+
+
+def reconstruct_beam_search(questions, answers, beam_path, beam_symbol):
+    """
+    Reconstruct beam search for testing time
+    :param questions:
+    :param answers:
+    :param beam_path:
+    :param beam_symbol:
+    :return:
+    """
     pass
 
 
