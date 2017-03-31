@@ -453,9 +453,9 @@ def parse_Cornwell_dataset_into_words():
     print('\n >> Save numpy arrays to pickle file')
     # save them
     with open('QA_Pairs_Words_Buckets.pkl', 'wb') as f:
-        cPickle.dump({"qa_pairs_words": qa_pairs_words,
-                      "bucket_sizes_words": bucket_sizes_words,
-                      "bucket_lengths_words": bucket_lengths_words}, f, protocol=cPickle.HIGHEST_PROTOCOL)
+        cPickle.dump({"qa_pairs": qa_pairs_words,
+                      "bucket_sizes": bucket_sizes_words,
+                      "bucket_lengths": bucket_lengths_words}, f, protocol=cPickle.HIGHEST_PROTOCOL)
 
 
     # write to disk the indices_to_words dictionnary
