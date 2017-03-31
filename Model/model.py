@@ -42,8 +42,9 @@ class Seq2Seq(object):
                                    num_symbols=num_symbol_decoder,
                                    cell=cell,
                                    beam_size=10,  # If you set beam_size > 1 and beam_search = False, you're stupid :)
-                                   beam_search=False,
+                                   beam_search=True,
                                    do_attention=False,
+                                   # beam_search and do_attention together seems to bug again, but it was working :'(
                                    embedding_size=embedding_size_decoder,
                                    share_embedding_with_encoder=False,
                                    output_projection=False,
