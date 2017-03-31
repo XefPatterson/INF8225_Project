@@ -41,7 +41,7 @@ class Seq2Seq(object):
             self.targets.append(tf.placeholder(tf.int32, shape=[None],
                                                name="decoder{0}".format(i)))
 
-        # decoder inputs : 'GO' + [ y1, y2, ... y_t-1 ]
+        # decoder inputs : 'GO' + [ y_1, y_2, ... y_t-1 ]
         self.decoder_inputs = [tf.zeros_like(self.targets[0], dtype=tf.int64, name='GO')] + self.targets[:-1]
 
         #Binary mask useful for padded sequences.
@@ -80,7 +80,9 @@ class Seq2Seq(object):
             cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers)
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
             return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(
-                encoder_inputs, decoder_inputs, cell,
+                encoder_inputs, 
+                decoder_inputs, 
+                cell,
                 num_encoder_symbols=FLAGS.vocab_size,
                 num_decoder_symbols=FLAGS.vocab_size,
                 embedding_size=128,
