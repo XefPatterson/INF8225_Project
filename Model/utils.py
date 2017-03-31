@@ -49,17 +49,17 @@ def get_batch(data, buckets, bucket_id, batch_size):
         a_pads[i][:a.shape[0]] = a
     return q_pads, a_pads
 
-
-def decrypt(questions, answers, predictions, idx_to_char, batch_size=32, number_to_decrypt=4):
+# The argument idx_to_symbol can be both idx_to_char or idx_to_word dictionary
+def decrypt(questions, answers, predictions, idx_to_symbol, batch_size=32, number_to_decrypt=4):
     index_to_decrypt = np.random.choice(range(batch_size), number_to_decrypt)
 
     predictions = [np.squeeze(prediction) for prediction in predictions]
     predictions = [np.argmax(prediction, axis=1) for prediction in predictions]
 
     for index in index_to_decrypt:
-        question = "".join([idx_to_char[idx] for idx in questions[index, :]])
-        true_answer = "".join([idx_to_char[idx] for idx in answers[index, :]])
-        fake_answer = "".join([idx_to_char[prediction[index]] for prediction in predictions])
+        question = "".join([idx_to_symbol[idx] for idx in questions[index, :]])
+        true_answer = "".join([idx_to_symbol[idx] for idx in answers[index, :]])
+        fake_answer = "".join([idx_to_symbol[prediction[index]] for prediction in predictions])
 
         cprint("Sample {}".format(index), color="yellow")
         cprint("Question: > {}".format(question), color="yellow")
@@ -67,9 +67,9 @@ def decrypt(questions, answers, predictions, idx_to_char, batch_size=32, number_
         cprint("Fake answer: > {}".format(fake_answer), color="red")
 
 
-def decrypt_single(sentence, idx_to_char):
-    return "".join([idx_to_char[idx] for idx in sentence])
+def decrypt_single(sentence, idx_to_symbol):
+    return "".join([idx_to_symbol[idx] for idx in sentence])
 
 
-def encrypt_single(string, char_to_idx):
-    return np.array([char_to_idx[char] for char in string.lower()])
+def encrypt_single(string, symbol_to_idx):
+    return np.array([symbol_to_idx[char] for char in string.lower()])
