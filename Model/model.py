@@ -29,6 +29,7 @@ class Seq2Seq(object):
             self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                       name="encoder{0}".format(i)))
 
+        # TODO Allow to create decoder with tf.Flags
         cell_state_size = FLAGS.hidden_size
 
         cell = tf.contrib.rnn.GRUCell(cell_state_size)
@@ -40,20 +41,21 @@ class Seq2Seq(object):
         decoder1 = decoder.Decoder(name="decoder1",
                                    num_symbols=num_symbol_decoder,
                                    cell=cell,
-                                   beam_size=1,
-                                   beam_search=True,
-                                   do_attention=True,
+                                   beam_size=10,  # If you set beam_size > 1 and beam_search = False, you're stupid :)
+                                   beam_search=False,
+                                   do_attention=False,
                                    embedding_size=embedding_size_decoder,
                                    share_embedding_with_encoder=False,
                                    output_projection=False,
                                    train_encoder_weight=False,
                                    max_decoder_sequence_length=self.max_decoder_sequence_length)
 
-        self.all_decoders = [decoder1]
+        self.all_decoders = [decoder1]  # I don't see why it won't working with multiple decoders, haven't test it a lot
 
         num_symbol_encoder = FLAGS.vocab_size
         embedding_size_encoder = FLAGS.size_embedding_encoder
         cell_encoder = copy.deepcopy(cell)
+
         my_seq2seq.myseq2seq(encoder_inputs=self.encoder_inputs,
                              max_length_encoder_in_batch=self.max_length_encoder_in_batch,
                              num_encoder_symbols=num_symbol_encoder,
@@ -65,8 +67,10 @@ class Seq2Seq(object):
 
     def forward_with_feed_dict(self, session, questions, answers, batch_max_encoder_size, batch_max_decoder_size,
                                is_training, decoder_to_use=0):
-        assert batch_max_decoder_size < self.max_decoder_sequence_length, "Decoding sequence is larger than model capability"
-        assert batch_max_encoder_size < self.max_encoder_sequence_length, "Encoding sequence is larger than model capability"
+        assert batch_max_decoder_size <= self.max_decoder_sequence_length, "Decoding sequence length {} is larger than model capability {}".format(
+            batch_max_decoder_size, self.max_decoder_sequence_length)
+        assert batch_max_encoder_size <= self.max_encoder_sequence_length, "Encoding sequence length {} is larger than model capability".format(
+            batch_max_encoder_size, self.max_encoder_sequence_length)
 
         decoder_to_use = self.all_decoders[decoder_to_use]
         encoder_size, decoder_size = batch_max_encoder_size, batch_max_encoder_size

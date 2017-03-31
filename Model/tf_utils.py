@@ -1,5 +1,7 @@
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
 import tensorflow as tf
 import math
 
@@ -19,6 +21,14 @@ def embedded_sequence(inputs,
                       num_symbols,
                       embedding_size,
                       embedding=None):
+    """
+    TODO
+    :param inputs:
+    :param num_symbols:
+    :param embedding_size:
+    :param embedding:
+    :return:
+    """
     with vs.variable_scope("embedded_sequence"):
         if embedding is None:
             # Embedding should have variance = 1
@@ -35,6 +45,7 @@ def embedded_sequence(inputs,
         # transform encoder_inputs
         return tf.nn.embedding_lookup(
             embedding, inputs), embedding
+
 
 def _extract_beam_search(embedding, beam_size, num_symbols, embedding_size):
     def loop_function(prev, i, log_beam_probs, beam_path, beam_symbols):

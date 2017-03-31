@@ -6,8 +6,6 @@ import pickle
 import os
 import utils
 
-# _buckets = [(30, 30), (60, 60)]  # , (100, 100), (150, 150)
-
 flags = tf.app.flags
 flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
 flags.DEFINE_integer("nb_iter_per_epoch", 100, "Epoch to train [100]")
@@ -24,8 +22,8 @@ flags.DEFINE_integer("num_layers", 1, "Num of layers [1]")
 flags.DEFINE_integer("size_embedding_encoder", 64, "Size of encoder embedding")
 flags.DEFINE_integer("size_embedding_decoder", 64, "Size of decoder embedding")
 
-flags.DEFINE_integer("max_encoder_sequence_length", 200, "Maximum length of any sequence for the encoder")
-flags.DEFINE_integer("max_decoder_sequence_length", 200, "Maximum length of any sequence for the decoder")
+flags.DEFINE_integer("max_encoder_sequence_length", 300, "Maximum length of any sequence for the encoder")
+flags.DEFINE_integer("max_decoder_sequence_length", 300, "Maximum length of any sequence for the decoder")
 
 FLAGS = flags.FLAGS
 
@@ -40,7 +38,9 @@ if __name__ == '__main__':
         data = pickle.load(f)
         qa_pairs = data['qa_pairs']
         bucket_sizes = data['bucket_sizes']
-        bucket_lengths = data['bucket_lengths']
+        bucket_lengths = data[
+            'bucket_lengths']  # Bucketing files are still interesting because close sequence length batch examples for the encoder is optimally used
+        # However there is no improvement for the decoder. I couldn't make tf.while_loop works ...
 
     max_encoder_length = bucket_lengths[-1][0]
     max_decoder_length = bucket_lengths[-1][1]
@@ -66,8 +66,10 @@ if __name__ == '__main__':
             questions, answers = utils.get_batch(qa_pairs, chosen_bucket_id, FLAGS.batch_size, max_encoder_length,
                                                  max_decoder_length)
 
-            seq2seq.forward_with_feed_dict(sess, questions, answers, max_encoder_length, max_decoder_length)
-            seq2seq.forward_with_feed_dict(sess, questions, answers, is_training=False)
+            seq2seq.forward_with_feed_dict(sess, questions, answers, max_encoder_length, max_decoder_length,
+                                           is_training=True)
+            seq2seq.forward_with_feed_dict(sess, questions, answers, max_encoder_length, max_decoder_length,
+                                           is_training=False)
 
 
             # Save losses

@@ -380,7 +380,6 @@ def beam_attention_decoder(decoder_inputs,
             if i == 0:
                 # If num_layers > 1, then replicate every state at each layer so that batch_size become batch_size x beam_size
                 if isinstance(state, tuple):
-
                     state = tf.cond(is_training,
                                     lambda: state,
                                     lambda: [tf.tile(state_layer, [beam_size, 1]) for state_layer in state])
