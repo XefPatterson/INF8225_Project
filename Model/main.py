@@ -20,8 +20,10 @@ flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 
 flags.DEFINE_float("beta1", 0.5, "Momentum term of adam [0.5]")
 flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
-flags.DEFINE_integer("vocab_size_encoder", 8000, "The size of the vocabulary [64]")
-flags.DEFINE_integer("vocab_size_decoder", 55, "The size of the vocabulary [64]")
+flags.DEFINE_integer("vocab_size", 8002, "The size of the vocabulary [64]")
+#flags.DEFINE_integer("vocab_size_encoder", 8002, "The size of the vocabulary [64]") # 8002 for words, 55 for chars
+#flags.DEFINE_integer("vocab_size_decoder", 8002, "The size of the vocabulary [64]") 
+# TODO : replace vocab_size by vocab_size_encoder and vocab_size decoder in model.py
 flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.5]")
 
 flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [128]")
@@ -36,7 +38,7 @@ if __name__ == '__main__':
     file_name = os.path.dirname(os.path.abspath(__file__))
 
     # Load data in RAM:
-    with open(os.path.join('..', 'Data', 'MovieQA', 'QA_Pair_Buckets.pkl'), 'rb') as f:
+    with open(os.path.join('..', 'Data', 'MovieQA', 'QA_Pairs_Words_Buckets.pkl'), 'rb') as f:
         data = pickle.load(f)
         qa_pairs = data['qa_pairs']
         bucket_sizes = data['bucket_sizes']
