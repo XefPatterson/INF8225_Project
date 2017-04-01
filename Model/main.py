@@ -10,9 +10,9 @@ import utils
 
 flags = tf.app.flags
 flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
-flags.DEFINE_integer("nb_iter_per_epoch", 1000, "Epoch to train [100]")
+flags.DEFINE_integer("nb_iter_per_epoch", 500, "Epoch to train [100]")
 
-flags.DEFINE_integer("out_frequency", 200, "Output frequency")
+flags.DEFINE_integer("save_frequency", 5, "Output frequency")
 flags.DEFINE_float("learning_rate", 0.0002, "Learning rate of for adam [0.0001")
 flags.DEFINE_float("decay_learning_rate_step", 10000, "Step to decay the learning rate [10000]")
 flags.DEFINE_float("learning_rate_decay_factor", 0.96, "Learning rate decay [0.96]")
@@ -20,7 +20,7 @@ flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 
 flags.DEFINE_float("beta1", 0.5, "Momentum term of adam [0.5]")
 flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
-flags.DEFINE_integer("vocab_size", 8002, "The size of the vocabulary [64]")
+flags.DEFINE_integer("vocab_size", 55, "The size of the vocabulary [64]")
 #flags.DEFINE_integer("vocab_size_encoder", 8002, "The size of the vocabulary [64]") # 8002 for words, 55 for chars
 #flags.DEFINE_integer("vocab_size_decoder", 8002, "The size of the vocabulary [64]") 
 # TODO : replace vocab_size by vocab_size_encoder and vocab_size decoder in model.py
@@ -38,7 +38,7 @@ if __name__ == '__main__':
     file_name = os.path.dirname(os.path.abspath(__file__))
 
     # Load data in RAM:
-    with open(os.path.join('..', 'Data', 'MovieQA', 'QA_Pairs_Words_Buckets.pkl'), 'rb') as f:
+    with open(os.path.join('..', 'Data', 'MovieQA', 'QA_Pair_Chars_Buckets.pkl'), 'rb') as f:
         data = pickle.load(f)
         qa_pairs = data['qa_pairs']
         bucket_sizes = data['bucket_sizes']
@@ -51,13 +51,8 @@ if __name__ == '__main__':
     sess = tf.Session()
     saver, summary_writer = utils.restore(seq2seq, sess)
 
-    # Start queues
-    # coord = tf.train.Coordinator()
-    # tf.train.start_queue_runners(sess=sess)
-    # sess.run(seq2seq.op_starting_queue)
-
     global_step = sess.run(seq2seq.global_step)
-
+    save = FLAGS.save_frequency
     while global_step < FLAGS.nb_epochs:
 
         # Run training iterations
@@ -71,10 +66,14 @@ if __name__ == '__main__':
             # Save losses
             summary_writer.add_summary(out[0], out[1])
 
-        print("Epoch done. \nSaving model")
         # Save model
-        saver.save(sess, "model/model", global_step)
-        print("Save done.\n")
+        if save == 0:
+            print("\nSaving checkpoint")
+            saver.save(sess, "model/model", global_step)
+            print("Save done.\n")
+            save = FLAGS.save_frequency
+        else:
+            save -= 1
 
         # Run testing iterations
         chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)

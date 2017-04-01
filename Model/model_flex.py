@@ -41,7 +41,7 @@ class Seq2Seq(object):
             self.targets.append(tf.placeholder(tf.int32, shape=[None],
                                                name="decoder{0}".format(i)))
 
-        # decoder inputs : 'GO' + [ y_1, y_2, ... y_t-1 ]
+        # decoder inputs : 'GO' + [ y1, y2, ... y_t-1 ]
         self.decoder_inputs = [tf.zeros_like(self.targets[0], dtype=tf.int64, name='GO')] + self.targets[:-1]
 
         #Binary mask useful for padded sequences.
@@ -78,10 +78,8 @@ class Seq2Seq(object):
         if FLAGS.num_layers > 1:
             cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers)
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-            return tf.contrib.legacy_seq2seq.embedding_rnn_seq2seq(
-                encoder_inputs, 
-                decoder_inputs, 
-                cell,
+            return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(
+                encoder_inputs, decoder_inputs, cell,
                 num_encoder_symbols=FLAGS.vocab_size,
                 num_decoder_symbols=FLAGS.vocab_size,
                 embedding_size=128,
@@ -107,31 +105,75 @@ class Seq2Seq(object):
                 self.buckets,
                 lambda x, y: seq2seq_f(x, y, True))
 
-        #cprint("[*] Building model (D)", color="yellow")
-        # Question encoder :
-        #single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
-        #disc_q_cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
-        #if FLAGS.num_layers > 1:
-        #    disc_q_cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers)
-        #disc_q_outputs, disc_q_states = tf.nn.dynamic_rnn(
-        #    cell=disc_q_cell,
-        #    inputs=self.encoder_inputs, # TODO, we need a 2D tensor instead of list
-        #    sequence_length=length, #TODO use length
-        #    dtype=tf.float32,
-        #    swap_memory=True)
+        cprint("[*] Building model (D)", color="yellow")
+        # Question encoder for D.
+        # Should be similar to the one used for G.
+        single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
+        disc_q_cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
+        if FLAGS.num_layers > 1:
+            disc_q_cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers)
+        disc_q_outputs, disc_q_states = tf.nn.dynamic_rnn(
+            cell=disc_q_cell,
+            inputs=self.encoder_inputs, # TODO, we need a 2D tensor instead of list, should be this with Louis'code.
+            sequence_length=question_length, #TODO use length
+            dtype=tf.float32,
+            swap_memory=True)
 
-        # TODO: Combine Real and Fake answers into a single minibatch
+        # TODO: Combine Real and Fake answers into a single minibatch. Use DECODER max length.
+        # TODO: Should we use vs.get_variable?
+        # Another "classic" dynamic RNN, therefore, transfer LIST inputs into 2D tensor inputs.
+        real_fake_answers = tf.placeholder(tf.int32, shape=[self.batch_size*2, self.max_decoder_sequence_length],
+                       name="real_and_fake_answers")
 
-        # TODO: get char/word embeddings of real/fake inputs
+        for t in range(self.max_decoder_sequence_length):
+            real_fake_answers[:self.batch_size, t] = self.decoder_inputs[t]
+            real_fake_answers[self.batch_size:, t] = self.decoder_outputs[0][t] #TODO use eventual G_decoder outputs
 
-        # TODO: take last state or output question encoder and concat to each embedding_t
+        # TODO: Produce target weights (binary mask) for this too!
+
+        # TODO: get char/word embeddings of real+fake inputs - use Louis' function :
+        # We assume d_embeddings.shape = (batch, T, embedding_size) - similar to dynamic RNN outputs.
+        d_inputs, d_embeddings = embedded_sequence(real_fake_answers,
+                                                      num_encoder_symbols,
+                                                      embedding_size_encoder)
+
+        # TODO: Get length of minibatch for dynamic RNN - use Louis's function:
+        answer_length = length_sequence(d_inputs)
+
+        # TODO: take last state or output question encoder ...
+        # TODO: Do we need a call to tf.expand_dims to keep the time dimension (to further allow broadcast durin concat)?
+        self.question_representation = disc_q_outputs[0][:, question_length-1, :] #shape = (batch, 1, cell_size)
+
+        # TODO:  ... and double the values for the double batch (real - fake) ...
+        self.question_representation = tf.concat(0, [question_representation, question_representation],
+                                            name="question_representation" )
+        # TODO: ... and concat to each embedding_t
+        self.question_representation = tf.concat(2, [question_representation, question_representation],
+                                            name="question_representation" )
 
         # TODO: Feed this to a "basic" stacked gru/lstm
+        single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
+        disc_a_cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
+        last_cell = tf.contrib.rnn.GRUCell(1)
+        if FLAGS.num_layers > 1:
+            disc_a_cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers + [last_cell])
+        else:
+            disc_a_cell = tf.contrib.rnn.MultiRNNCell([single_cell, last_cell])
 
-        # TODO: use softmax to classify each timestep as real/fake.
+        disc_a_outputs, disc_a_states = tf.nn.dynamic_rnn(
+            cell=disc_a_cell,
+            inputs=self.question_representation,
+            sequence_length=answer_length,
+            dtype=tf.float32,
+            swap_memory=True)
+
+        # TODO: use sigmoid to classify each timestep as real/fake.
+        d_probs = tf.sigmoid(disc_a_outputs)
 
         # TODO: define optimization for D and for G
-
+        d_loss = - tf.reduce_mean(tf.log(d_probs))
+        g_rewards = 1.0 - d_probs[self.batch_size:]
+        g_loss = tf.reduce_mean(tf.log(d_probs[self.batch_size:]))
 
         # Optimization :
         params = tf.trainable_variables()
