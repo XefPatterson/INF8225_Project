@@ -6,6 +6,7 @@ import os
 import time
 
 import sys
+
 sys.path.append(os.path.join('..', 'Model'))
 import model
 from model import Seq2Seq
@@ -32,11 +33,11 @@ flags.DEFINE_integer("num_layers", 1, "Num of layers [1]")
 FLAGS = flags.FLAGS
 model.FLAGS = FLAGS
 
+
 class seq2seq_chat(Seq2Seq):
-    
     def __init__(self, buckets, forward_only):
         super(seq2seq_chat, self).__init__(buckets, forward_only)
-        
+
         # Load the idx_to_chars dictionary
         with open(os.path.join('..', 'Data', 'MovieQA', 'idx_to_chars.pkl'), 'rb') as f:
             self.idx_to_chars = pickle.load(f)
@@ -50,7 +51,6 @@ class seq2seq_chat(Seq2Seq):
         # User asks something...
         q = utils.encrypt_single(question_string, self.chars_to_idx)
         a = utils.encrypt_single("", self.chars_to_idx)
-
 
         # Equivalent to utils.get_batch but for one example
         #   Prepare the batch (batch_size = 1)
@@ -79,5 +79,5 @@ class seq2seq_chat(Seq2Seq):
         cprint("Q : " + q_string.split("<PAD>")[0], color="green")
         cprint("A : " + a_string.split("<PAD>")[0], color="yellow")
         cprint("O : " + output_string, color="red")
-        
+
         return output_string

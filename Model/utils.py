@@ -67,16 +67,9 @@ def pl(questions, answers, attentions, batch_size=32, number_to_plot=1):
     pass
 
 
-def reconstruct_beam_search(questions, answers, beam_path, beam_symbol):
-    """
-    Reconstruct beam search for testing time
-    :param questions:
-    :param answers:
-    :param beam_path:
-    :param beam_symbol:
-    :return:
-    """
-    pass
+def reconstruct_beam_search(questions, answers, decoder, batch_size, number_to_decrypt=4):
+    from IPython import embed
+    embed()
 
 
 def decrypt(questions, answers, predictions, idx_to_char, batch_size=32, number_to_decrypt=4):

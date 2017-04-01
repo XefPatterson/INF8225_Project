@@ -61,7 +61,7 @@ class Decoder:
         self.decoder_inputs = []
         for i in range(self.max_decoder_sequence_length):
             self.targets.append(tf.placeholder(tf.int32, shape=[None],
-                                               name="decoder{0}".format(i)))
+                                                name="decoder{0}".format(i)))
 
         # decoder inputs : 'GO' + [ y1, y2, ... y_t-1 ]
         self.decoder_inputs = [tf.zeros_like(self.targets[0], dtype=tf.int32, name='GO')] + self.targets[:-1]

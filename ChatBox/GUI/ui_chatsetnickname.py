@@ -9,6 +9,7 @@ try:
 except AttributeError:
     _fromUtf8 = lambda s: s
 
+
 class Ui_NicknameDialog(object):
     def setupUi(self, NicknameDialog):
         NicknameDialog.setObjectName(_fromUtf8("NicknameDialog"))
@@ -18,7 +19,8 @@ class Ui_NicknameDialog(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(NicknameDialog.sizePolicy().hasHeightForWidth())
         NicknameDialog.setSizePolicy(sizePolicy)
-        NicknameDialog.setWindowTitle(QtGui.QApplication.translate("NicknameDialog", "Set nickname", None, QtGui.QApplication.UnicodeUTF8))
+        NicknameDialog.setWindowTitle(
+            QtGui.QApplication.translate("NicknameDialog", "Set nickname", None, QtGui.QApplication.UnicodeUTF8))
         self.vboxlayout = QtGui.QVBoxLayout(NicknameDialog)
         self.vboxlayout.setMargin(9)
         self.vboxlayout.setSpacing(6)
@@ -33,7 +35,8 @@ class Ui_NicknameDialog(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.label.sizePolicy().hasHeightForWidth())
         self.label.setSizePolicy(sizePolicy)
-        self.label.setText(QtGui.QApplication.translate("NicknameDialog", "New nickname:", None, QtGui.QApplication.UnicodeUTF8))
+        self.label.setText(
+            QtGui.QApplication.translate("NicknameDialog", "New nickname:", None, QtGui.QApplication.UnicodeUTF8))
         self.label.setObjectName(_fromUtf8("label"))
         self.vboxlayout1.addWidget(self.label)
         self.nickname = QtGui.QLineEdit(NicknameDialog)
@@ -47,11 +50,13 @@ class Ui_NicknameDialog(object):
         spacerItem = QtGui.QSpacerItem(131, 31, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
         self.hboxlayout.addItem(spacerItem)
         self.okButton = QtGui.QPushButton(NicknameDialog)
-        self.okButton.setText(QtGui.QApplication.translate("NicknameDialog", "OK", None, QtGui.QApplication.UnicodeUTF8))
+        self.okButton.setText(
+            QtGui.QApplication.translate("NicknameDialog", "OK", None, QtGui.QApplication.UnicodeUTF8))
         self.okButton.setObjectName(_fromUtf8("okButton"))
         self.hboxlayout.addWidget(self.okButton)
         self.cancelButton = QtGui.QPushButton(NicknameDialog)
-        self.cancelButton.setText(QtGui.QApplication.translate("NicknameDialog", "Cancel", None, QtGui.QApplication.UnicodeUTF8))
+        self.cancelButton.setText(
+            QtGui.QApplication.translate("NicknameDialog", "Cancel", None, QtGui.QApplication.UnicodeUTF8))
         self.cancelButton.setObjectName(_fromUtf8("cancelButton"))
         self.hboxlayout.addWidget(self.cancelButton)
         spacerItem1 = QtGui.QSpacerItem(40, 20, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
@@ -62,5 +67,3 @@ class Ui_NicknameDialog(object):
         QtCore.QObject.connect(self.okButton, QtCore.SIGNAL(_fromUtf8("clicked()")), NicknameDialog.accept)
         QtCore.QObject.connect(self.cancelButton, QtCore.SIGNAL(_fromUtf8("clicked()")), NicknameDialog.reject)
         QtCore.QMetaObject.connectSlotsByName(NicknameDialog)
-
-

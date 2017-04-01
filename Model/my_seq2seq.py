@@ -328,7 +328,7 @@ def beam_attention_decoder(decoder_inputs,
 
         outputs = []
         prev = None
-        batch_attn_size = array_ops.stack([batch_size, attn_size])
+        batch_attn_size = array_ops.stack([batch_size * beam_size, attn_size])
 
         # Init attention with zeros for the first decoder input (No attention)
         attns = array_ops.zeros(
@@ -378,17 +378,6 @@ def beam_attention_decoder(decoder_inputs,
                 # Useful only for attention mechanism
             prev = output
             if i == 0:
-                # If num_layers > 1, then replicate every state at each layer so that batch_size become batch_size x beam_size
-                if isinstance(state, tuple):
-                    state = tf.cond(is_training,
-                                    lambda: state,
-                                    lambda: [tf.tile(state_layer, [beam_size, 1]) for state_layer in state])
-                    if isinstance(state, tf.Tensor):
-                        state = [state]
-                else:
-                    state = tf.cond(is_training,
-                                    lambda: state,
-                                    lambda: tf.tile(state, [beam_size, 1]))
                 with vs.variable_scope(vs.get_variable_scope(), reuse=True):
                     # Compute the attention mechanism given the last state
                     attns = attention(get_last_state(state))
@@ -426,7 +415,7 @@ def beam_rnn_decoder(decoder_inputs,
     :param is_training: Tensor
         Variable to represent if we are training or testing. During training, the decoder_inputs first dimension is resized
         to (batch_size x beam_size). It is not efficient, but it was the only way to allow beam_search at test time.
-    :param scope: TODO Don't know if it usefull
+    :param scope: TODO Don't know if it useful
     :return:
     """
     with vs.variable_scope(scope or "beam_rnn_decoder"):
@@ -538,13 +527,13 @@ def rnn_decoder(decoder_inputs,
                                                          loop_function)
 
 
-def myseq2seq(encoder_inputs,
-              max_length_encoder_in_batch,
-              num_encoder_symbols,
-              embedding_size_encoder,
-              encoder_cell_fw,
-              decoders
-              ):
+def seq2seq_builder(encoder_inputs,
+                    max_length_encoder_in_batch,
+                    num_encoder_symbols,
+                    embedding_size_encoder,
+                    encoder_cell_fw,
+                    decoders
+                    ):
     """
     Seq2seq model implemented.
     This is the main function. It is responsible to creating a encoder and a decoder

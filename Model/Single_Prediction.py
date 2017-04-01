@@ -8,7 +8,6 @@ import model
 import utils
 import time
 
-
 flags = tf.app.flags
 flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
 flags.DEFINE_integer("nb_iter_per_epoch", 100, "Epoch to train [100]")
@@ -29,7 +28,6 @@ flags.DEFINE_integer("num_layers", 1, "Num of layers [1]")
 
 FLAGS = flags.FLAGS
 model.FLAGS = FLAGS
-
 
 s1 = time.time()
 # Load the idx_to_chars dictionary
@@ -55,7 +53,6 @@ question_string = "Hello Jack!"
 answer_string = "Hey Steve!"
 q = utils.encrypt_single(question_string, chars_to_idx)
 a = utils.encrypt_single(answer_string, chars_to_idx)
-
 
 # Equivalent to utils.get_batch but for one example
 #   Prepare the batch (batch_size = 1)

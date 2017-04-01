@@ -66,10 +66,13 @@ if __name__ == '__main__':
             questions, answers = utils.get_batch(qa_pairs, chosen_bucket_id, FLAGS.batch_size, max_encoder_length,
                                                  max_decoder_length)
 
-            seq2seq.forward_with_feed_dict(sess, questions, answers, max_encoder_length, max_decoder_length,
-                                           is_training=True)
-            seq2seq.forward_with_feed_dict(sess, questions, answers, max_encoder_length, max_decoder_length,
-                                           is_training=False)
+            out = seq2seq.forward_with_feed_dict(sess, questions, answers, max_encoder_length, max_decoder_length,
+                                                 is_training=True)
+            utils.reconstruct_beam_search(questions, answers, out, FLAGS.batch_size)
+
+            out = seq2seq.forward_with_feed_dict(sess, questions, answers, max_encoder_length, max_decoder_length,
+                                                 is_training=False)
+            utils.reconstruct_beam_search(questions, answers, out, FLAGS.batch_size)
 
 
             # Save losses

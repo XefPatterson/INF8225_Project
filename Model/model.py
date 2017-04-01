@@ -57,20 +57,22 @@ class Seq2Seq(object):
         embedding_size_encoder = FLAGS.size_embedding_encoder
         cell_encoder = copy.deepcopy(cell)
 
-        my_seq2seq.myseq2seq(encoder_inputs=self.encoder_inputs,
-                             max_length_encoder_in_batch=self.max_length_encoder_in_batch,
-                             num_encoder_symbols=num_symbol_encoder,
-                             embedding_size_encoder=embedding_size_encoder,
-                             encoder_cell_fw=cell_encoder,
-                             decoders=self.all_decoders)
+        my_seq2seq.seq2seq_builder(encoder_inputs=self.encoder_inputs,
+                                   max_length_encoder_in_batch=self.max_length_encoder_in_batch,
+                                   num_encoder_symbols=num_symbol_encoder,
+                                   embedding_size_encoder=embedding_size_encoder,
+                                   encoder_cell_fw=cell_encoder,
+                                   decoders=self.all_decoders)
 
         my_seq2seq.loss_per_decoder(self.all_decoders)
 
     def forward_with_feed_dict(self, session, questions, answers, batch_max_encoder_size, batch_max_decoder_size,
                                is_training, decoder_to_use=0):
-        assert batch_max_decoder_size <= self.max_decoder_sequence_length, "Decoding sequence length {} is larger than model capability {}".format(
+        assert batch_max_decoder_size <= self.max_decoder_sequence_length, "Decoding sequence length {} is larger than model " \
+                                                                           "capability {}".format(
             batch_max_decoder_size, self.max_decoder_sequence_length)
-        assert batch_max_encoder_size <= self.max_encoder_sequence_length, "Encoding sequence length {} is larger than model capability".format(
+        assert batch_max_encoder_size <= self.max_encoder_sequence_length, "Encoding sequence length {} is larger than model " \
+                                                                           "capability".format(
             batch_max_encoder_size, self.max_encoder_sequence_length)
 
         decoder_to_use = self.all_decoders[decoder_to_use]
@@ -95,6 +97,8 @@ class Seq2Seq(object):
 
         for l in range(decoder_size):
             output_feed.append(decoder_to_use.outputs[l])
-
+            if l < decoder_size - 1 and not is_training:
+                output_feed.append(decoder_to_use.beam_path[l])
+                output_feed.append(decoder_to_use.beam_symbol[l])
         outputs = session.run(output_feed, input_feed)
         return outputs
