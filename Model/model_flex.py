@@ -148,7 +148,7 @@ class Seq2Seq(object):
         self.question_representation = tf.concat(0, [question_representation, question_representation],
                                             name="question_representation" )
         # TODO: ... and concat to each embedding_t
-        self.question_representation = tf.concat(2, [question_representation, question_representation],
+        self.question_representation = tf.concat(2, [question_representation, d_embeddings],
                                             name="question_representation" )
 
         # TODO: Feed this to a "basic" stacked gru/lstm
