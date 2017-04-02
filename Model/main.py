@@ -12,7 +12,7 @@ verbose = True
 flags = tf.app.flags
 flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
 flags.DEFINE_integer("save_frequency", 1000, "Output frequency")
-flags.DEFINE_integer("nb_iter_per_epoch", 25, "Output frequency")
+flags.DEFINE_integer("nb_iter_per_epoch", 100, "Output frequency")
 
 # Optimization
 flags.DEFINE_float("learning_rate", 0.0002, "Learning rate of for adam [0.0001")
@@ -24,7 +24,7 @@ flags.DEFINE_integer("num_samples", 1024, "Number of samples for sampled softmax
 flags.DEFINE_integer("vocab_size_words", 8003, "The size of the vocabulary [64]")
 flags.DEFINE_integer("vocab_size_chars", 55, "The size of the vocabulary [64]")
 flags.DEFINE_integer("is_char_level_encoder", False, "Is the encoder char level based")
-flags.DEFINE_integer("is_char_level_decoder", True, "Is the decoder char level based")
+flags.DEFINE_integer("is_char_level_decoder", False, "Is the decoder char level based")
 
 flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.9]")
 
@@ -62,7 +62,7 @@ if __name__ == '__main__':
         bucket_lengths_words = [bucket_lengths_words[0]]
         bucket_sizes = [bucket_sizes[0]]
         bucket_sizes_words = [bucket_sizes_words[0]]
-        FLAGS.nb_iter_per_epoch = 25
+        FLAGS.nb_iter_per_epoch = 100
         FLAGS.hidden_size = 256
         FLAGS.num_layers = 1
         FLAGS.batch_size = 64
