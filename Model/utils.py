@@ -34,9 +34,7 @@ def get_mix_batch(data_chars, data_words, buckets_char, buckets_words, is_char_e
     q_c, a_c = get_batch(data_chars, buckets_char, bucket_id, batch_size, indices)
     q_w, a_w = get_batch(data_words, buckets_words, bucket_id, batch_size, indices)
 
-    return q_c if is_char_encoder else q_w, a_c if is_char_decode else q_w
-
-
+    return q_c if is_char_encoder else q_w, a_c if is_char_decode else a_w
 
 def decrypt_single(sentence, idx_to_symbol, words=False):
     if words==True:
