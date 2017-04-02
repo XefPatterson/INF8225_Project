@@ -113,15 +113,8 @@ def parse_Cornwell_dataset_into_chars():
              ',', '.', ':', ';', "'", '!', '?', '$', '%', '&',
              '(', ')', '=', '+', '-', '<EOS>']
 
-    chars_to_idx = {}
-    index = 0
-    for c in chars:
-        chars_to_idx[c] = index
-        index += 1
-
-    idx_to_chars = {}
-    for k, i in chars_to_idx.items():
-        idx_to_chars[i] = k
+    idx_to_chars = {i:c for i,c in enumerate(chars)}
+    chars_to_idx = {c:i for i,c in enumerate(chars)}
 
     with open("idx_to_chars.pkl", 'wb') as f:
         cPickle.dump(idx_to_chars, f, protocol=cPickle.HIGHEST_PROTOCOL)
