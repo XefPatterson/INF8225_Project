@@ -1,18 +1,17 @@
 import tensorflow as tf
 from tqdm import trange
-import numpy as np
 import model
 import pickle
 import os
 import utils
 
-# _buckets = [(30, 30), (60, 60)]  # , (100, 100), (150, 150)
+debug = False  # Fast testing (keep only the first two buckets)
 
 flags = tf.app.flags
 flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
-flags.DEFINE_integer("nb_iter_per_epoch", 500, "Epoch to train [100]")
+flags.DEFINE_integer("nb_iter_per_epoch", 500, "Epoch to train [500]")
 
-flags.DEFINE_integer("save_frequency", 5, "Output frequency")
+flags.DEFINE_integer("save_frequency", 1000, "Output frequency")
 flags.DEFINE_float("learning_rate", 0.0002, "Learning rate of for adam [0.0001")
 flags.DEFINE_float("decay_learning_rate_step", 10000, "Step to decay the learning rate [10000]")
 flags.DEFINE_float("learning_rate_decay_factor", 0.96, "Learning rate decay [0.96]")
@@ -21,13 +20,13 @@ flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 flags.DEFINE_float("beta1", 0.5, "Momentum term of adam [0.5]")
 flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
 flags.DEFINE_integer("vocab_size", 55, "The size of the vocabulary [64]")
-#flags.DEFINE_integer("vocab_size_encoder", 8002, "The size of the vocabulary [64]") # 8002 for words, 55 for chars
-#flags.DEFINE_integer("vocab_size_decoder", 8002, "The size of the vocabulary [64]") 
+# flags.DEFINE_integer("vocab_size_encoder", 8002, "The size of the vocabulary [64]") # 8002 for words, 55 for chars
+# flags.DEFINE_integer("vocab_size_decoder", 8002, "The size of the vocabulary [64]")
 # TODO : replace vocab_size by vocab_size_encoder and vocab_size decoder in model.py
 flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.5]")
 
-flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [128]")
-flags.DEFINE_integer("num_layers", 3, "Num of layers [1]")
+flags.DEFINE_integer("hidden_size", 100, "Hidden size of RNN cell [128]")
+flags.DEFINE_integer("num_layers", 1, "Num of layers [1]")
 
 FLAGS = flags.FLAGS
 
@@ -44,41 +43,36 @@ if __name__ == '__main__':
         bucket_sizes = data['bucket_sizes']
         bucket_lengths = data['bucket_lengths']
 
+    if debug:
+        bucket_lengths = bucket_lengths[:1]
+        bucket_sizes = bucket_sizes[:1]
+        FLAGS.nb_iter_per_epoch = 10
+
     model.FLAGS = FLAGS
     seq2seq = model.Seq2Seq(buckets=bucket_lengths)
     seq2seq.build()
 
-    sess = tf.Session()
-    saver, summary_writer = utils.restore(seq2seq, sess)
+    # saver, summary_writer = utils.restore(seq2seq, sess)
+    sv = tf.train.Supervisor(logdir="model",
+                             global_step=seq2seq.global_step,
+                             save_model_secs=FLAGS.save_frequency)
 
-    global_step = sess.run(seq2seq.global_step)
-    save = FLAGS.save_frequency
-    while global_step < FLAGS.nb_epochs:
+    with sv.managed_session() as sess:
+        while not sv.should_stop():
+            for _ in trange(FLAGS.nb_iter_per_epoch, leave=False):
+                # Pick bucket
+                chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
+                # Retrieve examples
+                questions, answers = utils.get_batch(qa_pairs, bucket_lengths, chosen_bucket_id, FLAGS.batch_size)
+                # Run session
+                out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers, is_training=True)
 
-        # Run training iterations
-        for _ in trange(FLAGS.nb_iter_per_epoch, leave=False):
-            # Select bucket for the iteration
+            # Run testing
             chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
             questions, answers = utils.get_batch(qa_pairs, bucket_lengths, chosen_bucket_id, FLAGS.batch_size)
-
-            out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers)
-            # print(out[1])
-            # Save losses
-            summary_writer.add_summary(out[0], out[1])
-
-        # Save model
-        if save == 0:
-            print("\nSaving checkpoint")
-            saver.save(sess, "model/model", global_step)
-            print("Save done.\n")
-            save = FLAGS.save_frequency
-        else:
-            save -= 1
-
-        # Run testing iterations
-        chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
-        questions, answers = utils.get_batch(qa_pairs, bucket_lengths, chosen_bucket_id, FLAGS.batch_size)
-        predictions, questions, answers = seq2seq.predict(chosen_bucket_id, sess, questions, answers)
-        # (64, 30)
-
-        utils.decrypt(questions, answers, predictions, idx_to_char)
+            out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers,
+                                                 is_training=False)
+            # Decrypt and display answers
+            utils.decrypt(questions, answers, out["predictions"], idx_to_char)
+            # Plot attentions
+            utils.plot_attention(questions, out["attentions"], out["predictions"], idx_to_char, FLAGS.batch_size)

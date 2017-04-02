@@ -5,13 +5,11 @@ from tqdm import tqdm
 import random
 import nltk
 import itertools
-from collections import defaultdict
 import pickle
-from termcolor import cprint
 
-
-bucket_lengths_chars = [(10,10), (25,25), (50,50), (100,100), (150,150)]
-bucket_lengths_words = [(2,2), (6,6), (13,13), (26,26), (39,39)] # See what links buckets lengths for words and chars below
+bucket_lengths_chars = [(10, 10), (25, 25), (50, 50), (100, 100), (150, 150)]
+bucket_lengths_words = [(2, 2), (6, 6), (13, 13), (26, 26),
+                        (39, 39)]  # See what links buckets lengths for words and chars below
 
 """
 BUCKET_LENGTHS EXPLANATION FOR WORDS
@@ -48,6 +46,8 @@ def create_buckets(qa_pairs, bucket_lengths):
 PARSE CORNELL DATASET INTO CHARS
 ------------------------------------
 """
+
+
 def parse_Cornwell_dataset_into_chars():
     chars = ['<PAD>', '<UNK>', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
              'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q',
@@ -68,7 +68,7 @@ def parse_Cornwell_dataset_into_chars():
 
     with open("idx_to_chars.pkl", 'wb') as f:
         cPickle.dump(idx_to_chars, f, protocol=cPickle.HIGHEST_PROTOCOL)
-    
+
     with open("chars_to_idx.pkl", 'wb') as f:
         cPickle.dump(chars_to_idx, f, protocol=cPickle.HIGHEST_PROTOCOL)
 
@@ -76,15 +76,15 @@ def parse_Cornwell_dataset_into_chars():
         if lower:
             s = s.lower()
 
-        v_seq = np.zeros(shape=(len(s)+1), dtype=np.int32)
+        v_seq = np.zeros(shape=(len(s) + 1), dtype=np.int32)
         for i in range(len(s)):
             v_seq[i] = chars_to_idx.get(s[i], 1)
         v_seq[-1] = chars_to_idx['<EOS>']
         return v_seq
 
     # Load text files into nupmy arrays;
-    movie_convs_txt = os.path.join('raw_data','movie_conversations.txt')
-    movie_lines_txt = os.path.join('raw_data','movie_lines.txt')
+    movie_convs_txt = os.path.join('raw_data', 'movie_conversations.txt')
+    movie_lines_txt = os.path.join('raw_data', 'movie_lines.txt')
 
     movie_convs_np = np.loadtxt(movie_convs_txt, dtype='string', delimiter=' +++$+++ ', comments=None)
     movie_lines_np = np.loadtxt(movie_lines_txt, dtype='string', delimiter=' +++$+++ ', comments=None)
@@ -121,31 +121,28 @@ def parse_Cornwell_dataset_into_chars():
                       "bucket_lengths": bucket_lengths_chars}, f, protocol=cPickle.HIGHEST_PROTOCOL)
 
 
-
-
-
-
 """
 ------------------------------------
 PARSE CORNELL DATASET INTO WORDS
 ------------------------------------
 """
-def parse_Cornwell_dataset_into_words():
 
-    EN_WHITELIST = '0123456789abcdefghijklmnopqrstuvwxyz ' # space is included in whitelist
+
+def parse_Cornwell_dataset_into_words():
+    EN_WHITELIST = '0123456789abcdefghijklmnopqrstuvwxyz '  # space is included in whitelist
     EN_BLACKLIST = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~\''
 
     limit = {
-            'maxq' : 30,
-            'minq' : 1,
-            'maxa' : 30,
-            'mina' : 1
-            }
+        'maxq': 30,
+        'minq': 1,
+        'maxa': 30,
+        'mina': 1
+    }
 
     UNK = 'unk'
     VOCAB_SIZE = 8000
 
-    bucket_lengths_words = [(2,2), (4,4), (8,8), (16,16), (30,30)]
+    bucket_lengths_words = [(2, 2), (4, 4), (8, 8), (16, 16), (30, 30)]
 
     def create_buckets(qa_pairs, bucket_lengths):
         """
@@ -167,12 +164,14 @@ def parse_Cornwell_dataset_into_words():
                     break
 
         return buckets
-    ''' 
+
+    '''
         1. Read from 'movie-lines.txt'
         2. Create a dictionary with ( key = line_id, value = text )
     '''
+
     def get_id2line():
-        lines=open(os.path.join('raw_data', 'movie_lines.txt')).read().split('\n')
+        lines = open(os.path.join('raw_data', 'movie_lines.txt')).read().split('\n')
         id2line = {}
         for line in lines:
             _line = line.split(' +++$+++ ')
@@ -184,11 +183,12 @@ def parse_Cornwell_dataset_into_words():
         1. Read from 'movie_conversations.txt'
         2. Create a list of [list of line_id's]
     '''
+
     def get_conversations():
         conv_lines = open(os.path.join('raw_data', 'movie_conversations.txt')).read().split('\n')
-        convs = [ ]
+        convs = []
         for line in conv_lines[:-1]:
-            _line = line.split(' +++$+++ ')[-1][1:-1].replace("'","").replace(" ","")
+            _line = line.split(' +++$+++ ')[-1][1:-1].replace("'", "").replace(" ", "")
             convs.append(_line.split(','))
         return convs
 
@@ -197,10 +197,11 @@ def parse_Cornwell_dataset_into_words():
         2. Get each line from conversation
         3. Save each conversation to file
     '''
-    def extract_conversations(convs,id2line,path=''):
+
+    def extract_conversations(convs, id2line, path=''):
         idx = 0
         for conv in convs:
-            f_conv = open(path + str(idx)+'.txt', 'w')
+            f_conv = open(path + str(idx) + '.txt', 'w')
             for line_id in conv:
                 f_conv.write(id2line[line_id])
                 f_conv.write('\n')
@@ -212,20 +213,21 @@ def parse_Cornwell_dataset_into_words():
         1. [questions]
         2. [answers]
     '''
+
     def gather_dataset(convs, id2line):
-        questions = []; answers = []
+        questions = [];
+        answers = []
 
         for conv in convs:
-            if len(conv) %2 != 0:
+            if len(conv) % 2 != 0:
                 conv = conv[:-1]
             for i in range(len(conv)):
-                if i%2 == 0:
+                if i % 2 == 0:
                     questions.append(id2line[conv[i]])
                 else:
                     answers.append(id2line[conv[i]])
 
         return questions, answers
-
 
     '''
         We need 4 files
@@ -234,25 +236,26 @@ def parse_Cornwell_dataset_into_words():
         3. test.enc  : Encoder input for testing
         4. test.dec  : Decoder input for testing
     '''
-    def prepare_seq2seq_files(questions, answers, path='',TESTSET_SIZE = 30000):
-        
+
+    def prepare_seq2seq_files(questions, answers, path='', TESTSET_SIZE=30000):
+
         # open files
-        train_enc = open(path + 'train.enc','w')
-        train_dec = open(path + 'train.dec','w')
-        test_enc  = open(path + 'test.enc', 'w')
-        test_dec  = open(path + 'test.dec', 'w')
+        train_enc = open(path + 'train.enc', 'w')
+        train_dec = open(path + 'train.dec', 'w')
+        test_enc = open(path + 'test.enc', 'w')
+        test_dec = open(path + 'test.dec', 'w')
 
         # choose 30,000 (TESTSET_SIZE) items to put into testset
-        test_ids = random.sample([i for i in range(len(questions))],TESTSET_SIZE)
+        test_ids = random.sample([i for i in range(len(questions))], TESTSET_SIZE)
 
         for i in range(len(questions)):
             if i in test_ids:
-                test_enc.write(questions[i]+'\n')
-                test_dec.write(answers[i]+ '\n' )
+                test_enc.write(questions[i] + '\n')
+                test_dec.write(answers[i] + '\n')
             else:
-                train_enc.write(questions[i]+'\n')
-                train_dec.write(answers[i]+ '\n' )
-            if i%10000 == 0:
+                train_enc.write(questions[i] + '\n')
+                train_dec.write(answers[i] + '\n')
+            if i % 10000 == 0:
                 print('\n>> written {} lines'.format(i))
 
         # close files
@@ -260,24 +263,22 @@ def parse_Cornwell_dataset_into_words():
         train_dec.close()
         test_enc.close()
         test_dec.close()
-                
-
 
     '''
      remove anything that isn't in the vocabulary
         return str(pure en)
 
     '''
+
     def filter_line(line, whitelist):
-        return ''.join([ ch for ch in line if ch in whitelist ])
-
-
+        return ''.join([ch for ch in line if ch in whitelist])
 
     '''
      filter too long and too short sequences
         return tuple( filtered_ta, filtered_en )
 
     '''
+
     def filter_data(qseq, aseq):
         filtered_q, filtered_a = [], []
         raw_data_len = len(qseq)
@@ -293,11 +294,10 @@ def parse_Cornwell_dataset_into_words():
 
         # print the fraction of the original data, filtered
         filt_data_len = len(filtered_q)
-        filtered = int((raw_data_len - filt_data_len)*100/raw_data_len)
+        filtered = int((raw_data_len - filt_data_len) * 100 / raw_data_len)
         print(str(filtered) + '% filtered from original data')
 
         return filtered_q, filtered_a
-
 
     '''
      read list of words, create index to word,
@@ -305,6 +305,7 @@ def parse_Cornwell_dataset_into_words():
         return tuple( vocab->(word, count), idx2w, w2idx )
 
     '''
+
     def index_(tokenized_sentences, vocab_size):
         # get frequency distribution
         freq_dist = nltk.FreqDist(itertools.chain(*tokenized_sentences))
@@ -314,9 +315,9 @@ def parse_Cornwell_dataset_into_words():
             pickle.dump(vocab, f)
 
         # index2word
-        index2word = ['_'] + [UNK] + [ x[0] for x in vocab ]
+        index2word = ['_'] + [UNK] + [x[0] for x in vocab]
         # word2index
-        word2index = dict([(w,i) for i,w in enumerate(index2word)] )
+        word2index = dict([(w, i) for i, w in enumerate(index2word)])
         return index2word, word2index, freq_dist
 
     '''
@@ -324,28 +325,28 @@ def parse_Cornwell_dataset_into_words():
       filter out the worst sentences
 
     '''
+
     def filter_unk(qtokenized, atokenized, w2idx):
         data_len = len(qtokenized)
 
         filtered_q, filtered_a = [], []
 
         for qline, aline in zip(qtokenized, atokenized):
-            unk_count_q = len([ w for w in qline if w not in w2idx ])
-            unk_count_a = len([ w for w in aline if w not in w2idx ])
+            unk_count_q = len([w for w in qline if w not in w2idx])
+            unk_count_a = len([w for w in aline if w not in w2idx])
             if unk_count_a <= 2:
                 if unk_count_q > 0:
-                    if unk_count_q/len(qline) > 0.2:
+                    if unk_count_q / len(qline) > 0.2:
                         pass
                 filtered_q.append(qline)
                 filtered_a.append(aline)
 
         # print the fraction of the original data, filtered
         filt_data_len = len(filtered_q)
-        filtered = int((data_len - filt_data_len)*100/data_len)
+        filtered = int((data_len - filt_data_len) * 100 / data_len)
         print(str(filtered) + '% filtered from original data')
 
         return filtered_q, filtered_a
-
 
     '''
      create the final dataset : 
@@ -353,6 +354,7 @@ def parse_Cornwell_dataset_into_words():
           return ( [array_en([indices]), array_ta([indices]) )
      
     '''
+
     def pack_together(qtokenized, atokenized, w2idx):
         # num of rows
         data_len = len(qtokenized)
@@ -365,17 +367,16 @@ def parse_Cornwell_dataset_into_words():
             q_indices = convert_to_idx(qtokenized[i], w2idx)
             a_indices = convert_to_idx(atokenized[i], w2idx)
 
-            #print(len(idx_q[i]), len(q_indices))
-            #print(len(idx_a[i]), len(a_indices))
+            # print(len(idx_q[i]), len(q_indices))
+            # print(len(idx_a[i]), len(a_indices))
             idx_q.append(np.array(q_indices))
             idx_a.append(np.array(a_indices))
-        
+
         # Makes a list of all the examples
         #   each element of this list is a tuple (question,answer)
         examples = zip(idx_q, idx_a)
 
         return examples
-
 
     '''
      replace words with indices in a sequence
@@ -383,6 +384,7 @@ def parse_Cornwell_dataset_into_words():
         return [list of indices]
 
     '''
+
     def convert_to_idx(seq, lookup):
         indices = []
         for word in seq:
@@ -392,8 +394,6 @@ def parse_Cornwell_dataset_into_words():
                 indices.append(lookup[UNK])
         return indices
 
-
-
     # PROCESS THE DATA
 
     id2line = get_id2line()
@@ -401,42 +401,41 @@ def parse_Cornwell_dataset_into_words():
     convs = get_conversations()
     print(convs[121:125])
     print('>> gathered conversations.\n')
-    questions, answers = gather_dataset(convs,id2line)
+    questions, answers = gather_dataset(convs, id2line)
 
     # change to lower case (just for en)
-    questions = [ line.lower() for line in questions ]
-    answers = [ line.lower() for line in answers ]
+    questions = [line.lower() for line in questions]
+    answers = [line.lower() for line in answers]
 
     # filter out unnecessary characters
     print('\n>> Filter lines')
-    questions = [ filter_line(line, EN_WHITELIST) for line in questions ]
-    answers = [ filter_line(line, EN_WHITELIST) for line in answers ]
+    questions = [filter_line(line, EN_WHITELIST) for line in questions]
+    answers = [filter_line(line, EN_WHITELIST) for line in answers]
 
     # filter out too long or too short sequences
     print('\n>> 2nd layer of filtering')
     qlines, alines = filter_data(questions, answers)
 
-    for q,a in zip(qlines[141:145], alines[141:145]):
-        print('q : [{0}]; a : [{1}]'.format(q,a))
+    for q, a in zip(qlines[141:145], alines[141:145]):
+        print('q : [{0}]; a : [{1}]'.format(q, a))
 
     # convert list of [lines of text] into list of [list of words ]
     print('\n>> Segment lines into words')
-    qtokenized = [ [w.strip() for w in wordlist.split(' ') if w] for wordlist in qlines ]
-    atokenized = [ [w.strip() for w in wordlist.split(' ') if w] for wordlist in alines ]
+    qtokenized = [[w.strip() for w in wordlist.split(' ') if w] for wordlist in qlines]
+    atokenized = [[w.strip() for w in wordlist.split(' ') if w] for wordlist in alines]
     print('\n:: Sample from segmented list of words')
 
-    for q,a in zip(qtokenized[141:145], atokenized[141:145]):
-        print('q : [{0}]; a : [{1}]'.format(q,a))
+    for q, a in zip(qtokenized[141:145], atokenized[141:145]):
+        print('q : [{0}]; a : [{1}]'.format(q, a))
 
     # indexing -> idx2w, w2idx 
     print('\n >> Index words')
-    idx2w, w2idx, freq_dist = index_( qtokenized + atokenized, vocab_size=VOCAB_SIZE)
-    
+    idx2w, w2idx, freq_dist = index_(qtokenized + atokenized, vocab_size=VOCAB_SIZE)
+
     # filter out sentences with too many unknowns
     print('\n >> Filter Unknowns')
     qtokenized, atokenized = filter_unk(qtokenized, atokenized, w2idx)
     print('\n Final dataset len : ' + str(len(qtokenized)))
-
 
     print('\n >> Packing data up')
     qa_pairs_words = pack_together(qtokenized, atokenized, w2idx)
@@ -457,20 +456,13 @@ def parse_Cornwell_dataset_into_words():
                       "bucket_sizes": bucket_sizes_words,
                       "bucket_lengths": bucket_lengths_words}, f, protocol=cPickle.HIGHEST_PROTOCOL)
 
-
     # write to disk the indices_to_words dictionnary
     with open('idx_to_words.pkl', 'wb') as f:
         cPickle.dump(idx2w, f, protocol=cPickle.HIGHEST_PROTOCOL)
-    
+
     # write to disk the words_to_indices dictionnary
     with open('words_to_idx.pkl', 'wb') as f:
         cPickle.dump(w2idx, f, protocol=cPickle.HIGHEST_PROTOCOL)
-
-
-
-
-
-
 
 
 """
@@ -482,4 +474,3 @@ MAIN
 if __name__ == '__main__':
     parse_Cornwell_dataset_into_words()
     parse_Cornwell_dataset_into_chars()
-

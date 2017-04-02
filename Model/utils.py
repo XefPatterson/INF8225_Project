@@ -1,6 +1,7 @@
 from termcolor import cprint
 import tensorflow as tf
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def restore(model, session, save_name="model/"):
@@ -32,6 +33,8 @@ def restore(model, session, save_name="model/"):
 
 
 def get_random_bucket_id_pkl(bucket_sizes):
+    # Fix problem.
+    bucket_sizes = [float(bucket_size) for bucket_size in bucket_sizes]
     odds = bucket_sizes / np.sum(bucket_sizes)
     bucket_id = np.argmax(np.random.multinomial(1, odds, 1))
     return bucket_id
@@ -49,6 +52,7 @@ def get_batch(data, buckets, bucket_id, batch_size):
         a_pads[i][:a.shape[0]] = a
     return q_pads, a_pads
 
+
 # The argument idx_to_symbol can be both idx_to_char or idx_to_word dictionary
 def decrypt(questions, answers, predictions, idx_to_symbol, batch_size=32, number_to_decrypt=4):
     index_to_decrypt = np.random.choice(range(batch_size), number_to_decrypt)
@@ -65,6 +69,34 @@ def decrypt(questions, answers, predictions, idx_to_symbol, batch_size=32, numbe
         cprint("Question: > {}".format(question), color="yellow")
         cprint("True answer: > {}".format(true_answer), color="green")
         cprint("Fake answer: > {}".format(fake_answer), color="red")
+
+
+def plot_attention(questions, attentions, predictions, idx_to_symbol, batch_size, nb_figures=1):
+    fig, (tuples) = plt.subplots(1, nb_figures)
+    for i in range(nb_figures):
+        index = np.random.choice(range(batch_size), 1)[0]
+
+        pred = [np.squeeze(prediction) for prediction in predictions]
+        pred = [np.argmax(prediction, axis=1) for prediction in pred]
+
+        question = [idx_to_symbol[idx] for idx in questions[index, :]]
+        answer = [idx_to_symbol[prediction[index]] for prediction in pred]
+
+        # List of attention given the encoder inputs
+        attention = [attention[index] for attention in attentions]
+
+        # per rows: question attention
+        # per cols: answer generation
+        data = np.stack(attention, axis=1)
+        tuples[i].imshow(data, vmin=0, vmax=1, cmap='Greys', interpolation="none")
+        tuples[i].set_xticks(range(len(answer)), minor=False)
+        tuples[i].set_xticklabels(answer, fontdict=None, minor=False)
+
+        tuples[i].set_yticks(range(len(question)), minor=False)
+        tuples[i].set_yticklabels(question, fontdict=None, minor=False)
+
+    plt.axis('off')
+    plt.savefig("plot.png")
 
 
 def decrypt_single(sentence, idx_to_symbol):
