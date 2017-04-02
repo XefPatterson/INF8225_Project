@@ -40,8 +40,16 @@ def get_random_bucket_id_pkl(bucket_sizes):
     return bucket_id
 
 
-def get_batch(data, buckets, bucket_id, batch_size):
-    indices = np.random.choice(len(data[bucket_id]), size=batch_size)
+"""
+utils.get_batch(qa_pairs, bucket_lengths, qa_pairs_words, bucket_lengths_words,
+                                                     chosen_bucket_id, FLAGS.batch_size,
+                                                     FLAGS.char_level_encoder, FLAGS.char_level_encoder)  # indices
+"""
+
+
+def get_batch(data, buckets, bucket_id, batch_size, indices=None):
+    if indices is None:
+        indices = np.random.choice(len(data[bucket_id]), size=batch_size)
     pairs = np.array(data[bucket_id])[indices]
 
     q_pads = np.zeros([batch_size, buckets[bucket_id][0]])
@@ -51,6 +59,17 @@ def get_batch(data, buckets, bucket_id, batch_size):
         q_pads[i][:q.shape[0]] = q
         a_pads[i][:a.shape[0]] = a
     return q_pads, a_pads
+
+
+def get_mix_batch(data_char, data_words, buckets_char, buckets_words, is_char_encoder, is_char_decode, bucket_id,
+                  batch_size):
+    assert (len(data_char[bucket_id]) == len(data_words[bucket_id])), "Different size between words and char dataset"
+    indices = np.random.choice(len(data_char[bucket_id]), size=batch_size)
+
+    q_c, a_c = get_batch(data_words, buckets_char, bucket_id, batch_size, indices)
+    q_w, a_w = get_batch(data_words, buckets_words, bucket_id, batch_size, indices)
+
+    return q_c if is_char_encoder else q_w, a_c if is_char_decode else q_w
 
 
 # The argument idx_to_symbol can be both idx_to_char or idx_to_word dictionary

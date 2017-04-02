@@ -32,6 +32,9 @@ class Seq2Seq(object):
         self.targets = []
         self.target_weights = []
 
+        self.vocab_size_encoder = FLAGS.vocab_size_chars if FLAGS.char_level_encoder else  FLAGS.vocab_size_words
+        self.vocab_size_decoder = FLAGS.vocab_size_chars if FLAGS.char_level_decoder else  FLAGS.vocab_size_words
+
         for i in range(self.buckets[-1][0]):
             self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                       name="encoder{0}".format(i)))
@@ -53,10 +56,11 @@ class Seq2Seq(object):
 
         self.output_projection = None
         self.softmax_loss_function = None
-        if FLAGS.num_samples > 0 and FLAGS.num_samples < FLAGS.vocab_size_decoder:
-            w = tf.get_variable("proj_w", [FLAGS.hidden_size, FLAGS.vocab_size_decoder])
+        if FLAGS.num_samples > 0 and FLAGS.num_samples < self.vocab_size_decoder:
+            cprint("[!] Create a sample softmax", color="yellow")
+            w = tf.get_variable("proj_w", [FLAGS.hidden_size, self.vocab_size_decoder])
             w_t = tf.transpose(w)
-            b = tf.get_variable("proj_b", [FLAGS.vocab_size_decoder])
+            b = tf.get_variable("proj_b", [self.vocab_size_decoder])
             self.output_projection = (w, b)
 
             def sampled_loss(logits, labels):
@@ -64,13 +68,16 @@ class Seq2Seq(object):
                 local_w_t = tf.cast(w_t, tf.float32)
                 local_b = tf.cast(b, tf.float32)
                 local_inputs = tf.cast(logits, tf.float32)
-                return tf.cast(
+                sample_softmax = tf.cast(
                     tf.nn.sampled_softmax_loss(weights=local_w_t,
                                                biases=local_b,
                                                inputs=local_inputs,
                                                labels=labels,
                                                num_sampled=FLAGS.num_samples,
-                                               num_classes=FLAGS.vocab_size_decoder), tf.float32)
+                                               num_classes=self.vocab_size_decoder), tf.float32)
+
+                inference_softmax = tf.nn.softmax(tf.matmul(local_inputs, tf.transpose(local_w_t)) + local_b)
+                return tf.cond(self.is_training, lambda: sample_softmax, lambda: inference_softmax)
 
             self.softmax_loss_function = sampled_loss
 
@@ -90,8 +97,8 @@ class Seq2Seq(object):
                 encoder_inputs,
                 decoder_inputs,
                 cell,
-                num_encoder_symbols=FLAGS.vocab_size_encoder,
-                num_decoder_symbols=FLAGS.vocab_size_decoder,
+                num_encoder_symbols=self.vocab_size_encoder,
+                num_decoder_symbols=self.vocab_size_decoder,
                 output_projection=self.output_projection,
                 embedding_size=128,
                 feed_previous=do_decode)
