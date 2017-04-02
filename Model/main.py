@@ -5,7 +5,7 @@ import pickle
 import os
 import utils
 
-debug = False  # Fast testing (keep only the first two buckets)
+debug = True  # Fast testing (keep only the first two buckets)
 
 flags = tf.app.flags
 flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
@@ -19,14 +19,13 @@ flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 
 flags.DEFINE_float("beta1", 0.5, "Momentum term of adam [0.5]")
 flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
-flags.DEFINE_integer("vocab_size", 55, "The size of the vocabulary [64]")
-# flags.DEFINE_integer("vocab_size_encoder", 8002, "The size of the vocabulary [64]") # 8002 for words, 55 for chars
-# flags.DEFINE_integer("vocab_size_decoder", 8002, "The size of the vocabulary [64]")
-# TODO : replace vocab_size by vocab_size_encoder and vocab_size decoder in model.py
+tf.app.flags.DEFINE_integer("num_samples", 1024, "Number of samples for sampled softmax.")
+flags.DEFINE_integer("vocab_size_encoder", 8002, "The size of the vocabulary [64]") # 8002 for words, 55 for chars
+flags.DEFINE_integer("vocab_size_decoder", 8002, "The size of the vocabulary [64]")
 flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.5]")
 
-flags.DEFINE_integer("hidden_size", 100, "Hidden size of RNN cell [128]")
-flags.DEFINE_integer("num_layers", 1, "Num of layers [1]")
+flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [128]")
+flags.DEFINE_integer("num_layers", 3, "Num of layers [1]")
 
 FLAGS = flags.FLAGS
 
@@ -47,6 +46,9 @@ if __name__ == '__main__':
         bucket_lengths = bucket_lengths[:1]
         bucket_sizes = bucket_sizes[:1]
         FLAGS.nb_iter_per_epoch = 10
+        FLAGS.hidden_size = 100
+        FLAGS.num_layers = 1
+        FLAGS.batch_size = 10
 
     model.FLAGS = FLAGS
     seq2seq = model.Seq2Seq(buckets=bucket_lengths)
@@ -73,6 +75,6 @@ if __name__ == '__main__':
             out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers,
                                                  is_training=False)
             # Decrypt and display answers
-            utils.decrypt(questions, answers, out["predictions"], idx_to_char)
+            utils.decrypt(questions, answers, out["predictions"], idx_to_char, FLAGS.batch_size)
             # Plot attentions
             utils.plot_attention(questions, out["attentions"], out["predictions"], idx_to_char, FLAGS.batch_size)

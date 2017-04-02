@@ -8,15 +8,11 @@ FLAGS = None
 
 class Seq2Seq(object):
     def __init__(self,
-                 buckets,
-                 forward_only=False):
+                 buckets):
         """
         Seq2Seq model
         :param buckets: List of pairs
             Each pair correspond to (max_size_in_bucket_for_encoder_sentence, max_size_in_bucket_for_decoder_sentence)
-        :param forward_only: Boolean (False)
-            Whether to update the model, or only predict.
-            Now it only supports False, but it should not be a big deal
         """
 
         self.max_gradient_norm = FLAGS.max_gradient_norm
@@ -55,6 +51,29 @@ class Seq2Seq(object):
         # Extract graph from graph to plot them
         self.retrieve_attentions = True
 
+        self.output_projection = None
+        self.softmax_loss_function = None
+        if FLAGS.num_samples > 0 and FLAGS.num_samples < FLAGS.vocab_size_decoder:
+            w = tf.get_variable("proj_w", [FLAGS.hidden_size, FLAGS.vocab_size_decoder])
+            w_t = tf.transpose(w)
+            b = tf.get_variable("proj_b", [FLAGS.vocab_size_decoder])
+            self.output_projection = (w, b)
+
+            def sampled_loss(logits, labels):
+                labels = tf.reshape(labels, [-1, 1])
+                local_w_t = tf.cast(w_t, tf.float32)
+                local_b = tf.cast(b, tf.float32)
+                local_inputs = tf.cast(logits, tf.float32)
+                return tf.cast(
+                    tf.nn.sampled_softmax_loss(weights=local_w_t,
+                                               biases=local_b,
+                                               inputs=local_inputs,
+                                               labels=labels,
+                                               num_sampled=FLAGS.num_samples,
+                                               num_classes=FLAGS.vocab_size_decoder), tf.float32)
+
+            self.softmax_loss_function = sampled_loss
+
     def build(self):
         """
         Build the model
@@ -71,10 +90,10 @@ class Seq2Seq(object):
                 encoder_inputs,
                 decoder_inputs,
                 cell,
-                num_encoder_symbols=FLAGS.vocab_size,
-                num_decoder_symbols=FLAGS.vocab_size,
+                num_encoder_symbols=FLAGS.vocab_size_encoder,
+                num_decoder_symbols=FLAGS.vocab_size_decoder,
+                output_projection=self.output_projection,
                 embedding_size=128,
-                output_projection=None,
                 feed_previous=do_decode)
 
         with tf.variable_scope("seq2seq") as _:
@@ -84,7 +103,8 @@ class Seq2Seq(object):
                 self.targets,
                 self.target_weights,
                 self.buckets,
-                lambda x, y: seq2seq_f(x, y, self.is_training))
+                lambda x, y: seq2seq_f(x, y, self.is_training),
+                softmax_loss_function=self.softmax_loss_function)
 
             self.outputs = model_infos[0]
             self.losses = model_infos[1]

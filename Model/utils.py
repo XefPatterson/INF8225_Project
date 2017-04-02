@@ -54,7 +54,7 @@ def get_batch(data, buckets, bucket_id, batch_size):
 
 
 # The argument idx_to_symbol can be both idx_to_char or idx_to_word dictionary
-def decrypt(questions, answers, predictions, idx_to_symbol, batch_size=32, number_to_decrypt=4):
+def decrypt(questions, answers, predictions, idx_to_symbol, batch_size, number_to_decrypt=4):
     index_to_decrypt = np.random.choice(range(batch_size), number_to_decrypt)
 
     predictions = [np.squeeze(prediction) for prediction in predictions]
@@ -71,7 +71,7 @@ def decrypt(questions, answers, predictions, idx_to_symbol, batch_size=32, numbe
         cprint("Fake answer: > {}".format(fake_answer), color="red")
 
 
-def plot_attention(questions, attentions, predictions, idx_to_symbol, batch_size, nb_figures=1):
+def plot_attention(questions, attentions, predictions, idx_to_symbol, batch_size, nb_figures=4):
     fig, (tuples) = plt.subplots(1, nb_figures)
     for i in range(nb_figures):
         index = np.random.choice(range(batch_size), 1)[0]
@@ -81,22 +81,21 @@ def plot_attention(questions, attentions, predictions, idx_to_symbol, batch_size
 
         question = [idx_to_symbol[idx] for idx in questions[index, :]]
         answer = [idx_to_symbol[prediction[index]] for prediction in pred]
-
         # List of attention given the encoder inputs
-        attention = [attention[index] for attention in attentions]
+        attention = [att[index] for att in attentions]
 
         # per rows: question attention
         # per cols: answer generation
         data = np.stack(attention, axis=1)
         tuples[i].imshow(data, vmin=0, vmax=1, cmap='Greys', interpolation="none")
-        tuples[i].set_xticks(range(len(answer)), minor=False)
-        tuples[i].set_xticklabels(answer, fontdict=None, minor=False)
+        tuples[i].set_xticks(range(len(answer)))
+        tuples[i].set_xticklabels(answer, fontsize='small')
 
         tuples[i].set_yticks(range(len(question)), minor=False)
-        tuples[i].set_yticklabels(question, fontdict=None, minor=False)
-
+        tuples[i].set_yticklabels(question, fontsize='small')
     plt.axis('off')
     plt.savefig("plot.png")
+    # plt.show()
 
 
 def decrypt_single(sentence, idx_to_symbol):
