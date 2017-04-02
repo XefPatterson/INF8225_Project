@@ -18,11 +18,6 @@ class Seq2Seq(object):
         self.max_gradient_norm = FLAGS.max_gradient_norm
         self.learning_rate = tf.Variable(float(FLAGS.learning_rate), trainable=False)
         self.global_step = tf.Variable(0, trainable=False)
-        self.learning_rate_decay_op = tf.train.exponential_decay(FLAGS.learning_rate,
-                                                                 self.global_step,
-                                                                 FLAGS.decay_learning_rate_step,
-                                                                 FLAGS.learning_rate_decay_factor,
-                                                                 staircase=True)
         self.is_training = tf.placeholder(tf.bool)
 
         self.buckets = buckets
@@ -32,8 +27,8 @@ class Seq2Seq(object):
         self.targets = []
         self.target_weights = []
 
-        self.vocab_size_encoder = FLAGS.vocab_size_chars if FLAGS.char_level_encoder else  FLAGS.vocab_size_words
-        self.vocab_size_decoder = FLAGS.vocab_size_chars if FLAGS.char_level_decoder else  FLAGS.vocab_size_words
+        self.vocab_size_encoder = FLAGS.vocab_size_chars if FLAGS.is_char_level_encoder else FLAGS.vocab_size_words
+        self.vocab_size_decoder = FLAGS.vocab_size_chars if FLAGS.is_char_level_decoder else FLAGS.vocab_size_words
 
         for i in range(self.buckets[-1][0]):
             self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
