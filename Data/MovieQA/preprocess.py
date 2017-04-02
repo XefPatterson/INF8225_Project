@@ -2,43 +2,100 @@ import numpy as np
 import os
 import cPickle
 from tqdm import tqdm
+from termcolor import cprint
 import random
 import nltk
 import itertools
 import pickle
+import copy
 
-bucket_lengths_chars = [(10, 10), (25, 25), (50, 50), (100, 100), (150, 150)]
-bucket_lengths_words = [(2, 2), (6, 6), (13, 13), (26, 26),
-                        (39, 39)]  # See what links buckets lengths for words and chars below
-
-"""
-BUCKET_LENGTHS EXPLANATION FOR WORDS
-We have a word vocabulary of the 8000 most frequent words in cornell dataset.
-We use the average length of a word weighted by its frequency (which is 3.8), 
-  to make a correspondance between bucket_lengths_chars and bucket_lengths_words
-"""
+bucket_lengths_chars = [(10,10), (25,25), (50,50), (100,100), (150,150)]
+bucket_lengths_words = None # Defined empirically after being created
 
 
-def create_buckets(qa_pairs, bucket_lengths):
+def create_buckets(qa_pairs_chars, qa_pairs_words):
     """
     Creates a dict of buckets of format bucket_id : list of tuples
     :param qa_pairs:
     :return: Dictionary of buckets
     """
     # Init buckets:
-    buckets = {}
-    for i in range(len(bucket_lengths)):
-        buckets[i] = []
+    chars_buckets = {}
+    for i in range(len(bucket_lengths_chars)):
+        chars_buckets[i] = []
+
+    words_buckets = copy.deepcopy(chars_buckets)
 
     # Fill buckets :
-    for qa in tqdm(qa_pairs, desc="Creating buckets"):
-        for i in range(len(bucket_lengths)):
+    for i in tqdm(range(len(qa_pairs_chars)), desc="Creating buckets"):
+        for j in range(len(bucket_lengths_chars)):
             # Q and A are shorter than bucket size
-            if len(qa[0]) <= bucket_lengths[i][0] and len(qa[1]) <= bucket_lengths[i][1]:
-                buckets[i].append(qa)
+            if len(qa_pairs_chars[i][0]) <= bucket_lengths_chars[j][0] and \
+               len(qa_pairs_chars[i][1]) <= bucket_lengths_chars[j][1]:
+                chars_buckets[j].append(qa_pairs_chars[i])
+                words_buckets[j].append(qa_pairs_words[i])
                 break
 
-    return buckets
+    return chars_buckets, words_buckets
+
+'''
+    1. Read from 'movie-lines.txt'
+    2. Create a dictionary with ( key = line_id, value = text )
+'''
+def get_id2line():
+    lines=open(os.path.join('raw_data', 'movie_lines.txt')).read().split('\n')
+    id2line = {}
+    for line in lines:
+        _line = line.split(' +++$+++ ')
+        if len(_line) == 5:
+            id2line[_line[0]] = _line[4]
+    return id2line
+
+'''
+    1. Read from 'movie_conversations.txt'
+    2. Create a list of [list of line_id's]
+'''
+def get_conversations():
+    conv_lines = open(os.path.join('raw_data', 'movie_conversations.txt')).read().split('\n')
+    convs = [ ]
+    for line in conv_lines[:-1]:
+        _line = line.split(' +++$+++ ')[-1][1:-1].replace("'","").replace(" ","")
+        convs.append(_line.split(','))
+    return convs
+
+'''
+    1. Get each conversation
+    2. Get each line from conversation
+    3. Save each conversation to file
+'''
+def extract_conversations(convs,id2line,path=''):
+    idx = 0
+    for conv in convs:
+        f_conv = open(path + str(idx)+'.txt', 'w')
+        for line_id in conv:
+            f_conv.write(id2line[line_id])
+            f_conv.write('\n')
+        f_conv.close()
+        idx += 1
+
+'''
+    Get lists of all conversations as Questions and Answers
+    1. [questions]
+    2. [answers]
+'''
+def gather_dataset(convs, id2line):
+    questions = []; answers = []
+
+    for conv in convs:
+        if len(conv) %2 != 0:
+            conv = conv[:-1]
+        for i in range(len(conv)):
+            if i%2 == 0:
+                questions.append(id2line[conv[i]])
+            else:
+                answers.append(id2line[conv[i]])
+
+    return questions, answers
 
 
 """
@@ -82,44 +139,18 @@ def parse_Cornwell_dataset_into_chars():
         v_seq[-1] = chars_to_idx['<EOS>']
         return v_seq
 
-    # Load text files into nupmy arrays;
-    movie_convs_txt = os.path.join('raw_data', 'movie_conversations.txt')
-    movie_lines_txt = os.path.join('raw_data', 'movie_lines.txt')
+    # PROCESS THE DATA
+    id2line = get_id2line()
+    convs = get_conversations()
+    questions, answers = gather_dataset(convs, id2line)
 
-    movie_convs_np = np.loadtxt(movie_convs_txt, dtype='string', delimiter=' +++$+++ ', comments=None)
-    movie_lines_np = np.loadtxt(movie_lines_txt, dtype='string', delimiter=' +++$+++ ', comments=None)
+    # change to lower case (just for en)
+    questions = [stringToIndices(line, chars_to_idx) for line in questions]
+    answers = [stringToIndices(line, chars_to_idx) for line in answers]
 
-    line_to_one_hot = {}
-    len_sentences = []
-    for line in tqdm(movie_lines_np, desc="String to character index"):
-        line_to_one_hot[line[0]] = stringToIndices(line[-1], chars_to_idx, lower=True)
-        len_sentences.append(len(line_to_one_hot[line[0]]))
+    qa_pairs_chars = zip(questions, answers)
 
-    qa_pairs_chars = []
-    for conversation in tqdm(movie_convs_np, desc="Match pairs of Q-A"):
-        subID = 0
-        lines = eval(conversation[-1])
-        while subID < (len(lines) - 1):
-            qa_pairs_chars.append((line_to_one_hot[lines[subID]], line_to_one_hot[lines[subID + 1]]))
-            subID += 1
-
-    # Memory management
-    del line_to_one_hot
-
-    # Create buckets
-    qa_pairs_chars = create_buckets(qa_pairs_chars, bucket_lengths_chars)
-
-    # Save stats for buckets:
-    bucket_sizes_chars = []
-    for k, v in qa_pairs_chars.items():
-        bucket_sizes_chars.append(len(v))
-
-    print("Saving file")
-    with open('QA_Pair_Chars_Buckets.pkl', 'wb') as f:
-        cPickle.dump({"qa_pairs": qa_pairs_chars,
-                      "bucket_sizes": bucket_sizes_chars,
-                      "bucket_lengths": bucket_lengths_chars}, f, protocol=cPickle.HIGHEST_PROTOCOL)
-
+    return qa_pairs_chars
 
 """
 ------------------------------------
@@ -144,126 +175,6 @@ def parse_Cornwell_dataset_into_words():
 
     bucket_lengths_words = [(2, 2), (4, 4), (8, 8), (16, 16), (30, 30)]
 
-    def create_buckets(qa_pairs, bucket_lengths):
-        """
-        Creates a dict of buckets of format bucket_id : list of tuples
-        :param qa_pairs:
-        :return: Dictionary of buckets
-        """
-        # Init buckets:
-        buckets = {}
-        for i in range(len(bucket_lengths)):
-            buckets[i] = []
-
-        # Fill buckets :
-        for qa in tqdm(qa_pairs, desc="Creating buckets"):
-            for i in range(len(bucket_lengths)):
-                # Q and A are shorter than bucket size
-                if len(qa[0]) <= bucket_lengths[i][0] and len(qa[1]) <= bucket_lengths[i][1]:
-                    buckets[i].append(qa)
-                    break
-
-        return buckets
-
-    '''
-        1. Read from 'movie-lines.txt'
-        2. Create a dictionary with ( key = line_id, value = text )
-    '''
-
-    def get_id2line():
-        lines = open(os.path.join('raw_data', 'movie_lines.txt')).read().split('\n')
-        id2line = {}
-        for line in lines:
-            _line = line.split(' +++$+++ ')
-            if len(_line) == 5:
-                id2line[_line[0]] = _line[4]
-        return id2line
-
-    '''
-        1. Read from 'movie_conversations.txt'
-        2. Create a list of [list of line_id's]
-    '''
-
-    def get_conversations():
-        conv_lines = open(os.path.join('raw_data', 'movie_conversations.txt')).read().split('\n')
-        convs = []
-        for line in conv_lines[:-1]:
-            _line = line.split(' +++$+++ ')[-1][1:-1].replace("'", "").replace(" ", "")
-            convs.append(_line.split(','))
-        return convs
-
-    '''
-        1. Get each conversation
-        2. Get each line from conversation
-        3. Save each conversation to file
-    '''
-
-    def extract_conversations(convs, id2line, path=''):
-        idx = 0
-        for conv in convs:
-            f_conv = open(path + str(idx) + '.txt', 'w')
-            for line_id in conv:
-                f_conv.write(id2line[line_id])
-                f_conv.write('\n')
-            f_conv.close()
-            idx += 1
-
-    '''
-        Get lists of all conversations as Questions and Answers
-        1. [questions]
-        2. [answers]
-    '''
-
-    def gather_dataset(convs, id2line):
-        questions = [];
-        answers = []
-
-        for conv in convs:
-            if len(conv) % 2 != 0:
-                conv = conv[:-1]
-            for i in range(len(conv)):
-                if i % 2 == 0:
-                    questions.append(id2line[conv[i]])
-                else:
-                    answers.append(id2line[conv[i]])
-
-        return questions, answers
-
-    '''
-        We need 4 files
-        1. train.enc : Encoder input for training
-        2. train.dec : Decoder input for training
-        3. test.enc  : Encoder input for testing
-        4. test.dec  : Decoder input for testing
-    '''
-
-    def prepare_seq2seq_files(questions, answers, path='', TESTSET_SIZE=30000):
-
-        # open files
-        train_enc = open(path + 'train.enc', 'w')
-        train_dec = open(path + 'train.dec', 'w')
-        test_enc = open(path + 'test.enc', 'w')
-        test_dec = open(path + 'test.dec', 'w')
-
-        # choose 30,000 (TESTSET_SIZE) items to put into testset
-        test_ids = random.sample([i for i in range(len(questions))], TESTSET_SIZE)
-
-        for i in range(len(questions)):
-            if i in test_ids:
-                test_enc.write(questions[i] + '\n')
-                test_dec.write(answers[i] + '\n')
-            else:
-                train_enc.write(questions[i] + '\n')
-                train_dec.write(answers[i] + '\n')
-            if i % 10000 == 0:
-                print('\n>> written {} lines'.format(i))
-
-        # close files
-        train_enc.close()
-        train_dec.close()
-        test_enc.close()
-        test_dec.close()
-
     '''
      remove anything that isn't in the vocabulary
         return str(pure en)
@@ -286,11 +197,11 @@ def parse_Cornwell_dataset_into_words():
         assert len(qseq) == len(aseq)
 
         for i in range(raw_data_len):
-            qlen, alen = len(qseq[i].split(' ')), len(aseq[i].split(' '))
-            if qlen >= limit['minq'] and qlen <= limit['maxq']:
-                if alen >= limit['mina'] and alen <= limit['maxa']:
-                    filtered_q.append(qseq[i])
-                    filtered_a.append(aseq[i])
+            # qlen, alen = len(qseq[i].split(' ')), len(aseq[i].split(' '))
+            # if qlen >= limit['minq'] and qlen <= limit['maxq']:
+            #    if alen >= limit['mina'] and alen <= limit['maxa']:
+            filtered_q.append(qseq[i])
+            filtered_a.append(aseq[i])
 
         # print the fraction of the original data, filtered
         filt_data_len = len(filtered_q)
@@ -314,11 +225,11 @@ def parse_Cornwell_dataset_into_words():
         with open('words.pkl', 'wb') as f:
             pickle.dump(vocab, f)
 
-        # index2word
-        index2word = ['_'] + [UNK] + [x[0] for x in vocab]
-        # word2index
-        word2index = dict([(w, i) for i, w in enumerate(index2word)])
-        return index2word, word2index, freq_dist
+        # Dictionnaries
+        listOfWords = ['<PAD>'] + ['<UNK>'] + [x[0] for x in vocab] + ['<EOS>']
+        idx_to_words = {i: w for i, w in enumerate(listOfWords)}
+        words_to_idx = {w: i for i, w in enumerate(listOfWords)}
+        return idx_to_words, words_to_idx
 
     '''
      filter based on number of unknowns (words not in vocabulary)
@@ -391,7 +302,8 @@ def parse_Cornwell_dataset_into_words():
             if word in lookup:
                 indices.append(lookup[word])
             else:
-                indices.append(lookup[UNK])
+                indices.append(lookup["<UNK>"])
+        indices.append(lookup['<EOS>'])
         return indices
 
     # PROCESS THE DATA
@@ -413,16 +325,16 @@ def parse_Cornwell_dataset_into_words():
     answers = [filter_line(line, EN_WHITELIST) for line in answers]
 
     # filter out too long or too short sequences
-    print('\n>> 2nd layer of filtering')
-    qlines, alines = filter_data(questions, answers)
+    #print('\n>> 2nd layer of filtering')
+    #qlines, alines = filter_data(questions, answers)
 
-    for q, a in zip(qlines[141:145], alines[141:145]):
-        print('q : [{0}]; a : [{1}]'.format(q, a))
+    #for q, a in zip(qlines[141:145], alines[141:145]):
+    #    print('q : [{0}]; a : [{1}]'.format(q, a))
 
     # convert list of [lines of text] into list of [list of words ]
     print('\n>> Segment lines into words')
-    qtokenized = [[w.strip() for w in wordlist.split(' ') if w] for wordlist in qlines]
-    atokenized = [[w.strip() for w in wordlist.split(' ') if w] for wordlist in alines]
+    qtokenized = [[w.strip() for w in wordlist.split(' ') if w] for wordlist in questions]
+    atokenized = [[w.strip() for w in wordlist.split(' ') if w] for wordlist in answers]
     print('\n:: Sample from segmented list of words')
 
     for q, a in zip(qtokenized[141:145], atokenized[141:145]):
@@ -430,20 +342,67 @@ def parse_Cornwell_dataset_into_words():
 
     # indexing -> idx2w, w2idx 
     print('\n >> Index words')
-    idx2w, w2idx, freq_dist = index_(qtokenized + atokenized, vocab_size=VOCAB_SIZE)
+    idx2w, w2idx = index_(qtokenized + atokenized, vocab_size=VOCAB_SIZE)
 
     # filter out sentences with too many unknowns
-    print('\n >> Filter Unknowns')
-    qtokenized, atokenized = filter_unk(qtokenized, atokenized, w2idx)
-    print('\n Final dataset len : ' + str(len(qtokenized)))
+    #print('\n >> Filter Unknowns')
+    #qtokenized, atokenized = filter_unk(qtokenized, atokenized, w2idx)
+    #print('\n Final dataset len : ' + str(len(qtokenized)))
 
     print('\n >> Packing data up')
     qa_pairs_words = pack_together(qtokenized, atokenized, w2idx)
 
-    print('\n >> Creating buckets')
-    # Create buckets
-    qa_pairs_words = create_buckets(qa_pairs_words, bucket_lengths_words)
+    # write to disk the indices_to_words dictionnary
+    with open('idx_to_words.pkl', 'wb') as f:
+        cPickle.dump(idx2w, f, protocol=cPickle.HIGHEST_PROTOCOL)
 
+    # write to disk the words_to_indices dictionnary
+    with open('words_to_idx.pkl', 'wb') as f:
+        cPickle.dump(w2idx, f, protocol=cPickle.HIGHEST_PROTOCOL)
+
+    return qa_pairs_words
+
+"""
+------------------------------------
+MAIN
+------------------------------------
+"""
+
+if __name__ == '__main__':
+    cprint("Parsing Dataset", color="green")
+    qa_pairs_words = parse_Cornwell_dataset_into_words()
+    qa_pairs_chars = parse_Cornwell_dataset_into_chars()
+    cprint(qa_pairs_words[0][0], color="yellow")
+    cprint(qa_pairs_chars[0][0], color="yellow")
+
+    # Create buckets
+    cprint("Creating buckets", color="green")
+    cprint(len(qa_pairs_words), color="yellow")
+    cprint(len(qa_pairs_chars), color="yellow")
+    qa_pairs_chars, qa_pairs_words = create_buckets(qa_pairs_chars, qa_pairs_words)
+
+    cprint(qa_pairs_words[0][0][0], color="yellow")
+    cprint(qa_pairs_chars[0][0][0], color="yellow")
+
+    # Calculate bucket_lengths_words
+    cprint("Calculating bucket_lengths_words", color="green")
+    bucket_lengths_words = []
+    for bucket in qa_pairs_words.values():
+        bucket_length = 0
+        for pair in bucket:
+            if max(len(pair[0]), len(pair[1])) > bucket_length:
+                bucket_length = max(len(pair[0]), len(pair[1]))
+
+        bucket_lengths_words.append((bucket_length, bucket_length))
+
+    print
+    bucket_lengths_words
+    print
+    bucket_lengths_chars
+
+    """
+    WORDS
+    """
     # Save stats for buckets:
     bucket_sizes_words = []
     for k, v in qa_pairs_words.items():
@@ -456,21 +415,17 @@ def parse_Cornwell_dataset_into_words():
                       "bucket_sizes": bucket_sizes_words,
                       "bucket_lengths": bucket_lengths_words}, f, protocol=cPickle.HIGHEST_PROTOCOL)
 
-    # write to disk the indices_to_words dictionnary
-    with open('idx_to_words.pkl', 'wb') as f:
-        cPickle.dump(idx2w, f, protocol=cPickle.HIGHEST_PROTOCOL)
+    """
+    CHARS
+    """
+    # Save stats for buckets:
+    bucket_sizes_chars = []
+    for k, v in qa_pairs_chars.items():
+        bucket_sizes_chars.append(len(v))
 
-    # write to disk the words_to_indices dictionnary
-    with open('words_to_idx.pkl', 'wb') as f:
-        cPickle.dump(w2idx, f, protocol=cPickle.HIGHEST_PROTOCOL)
+    print("Saving file")
+    with open('QA_Pairs_Chars_Buckets.pkl', 'wb') as f:
+        cPickle.dump({"qa_pairs": qa_pairs_chars,
+                      "bucket_sizes": bucket_sizes_chars,
+                      "bucket_lengths": bucket_lengths_chars}, f, protocol=cPickle.HIGHEST_PROTOCOL)
 
-
-"""
-------------------------------------
-MAIN
-------------------------------------
-"""
-
-if __name__ == '__main__':
-    parse_Cornwell_dataset_into_words()
-    parse_Cornwell_dataset_into_chars()
