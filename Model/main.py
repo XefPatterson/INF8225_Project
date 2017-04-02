@@ -21,8 +21,8 @@ flags.DEFINE_integer("batch_size", 64, "The size of the batch [64]")
 
 # Vocabulary
 flags.DEFINE_integer("num_samples", 1024, "Number of samples for sampled softmax.")
-flags.DEFINE_integer("vocab_size_words", 8003, "The size of the vocabulary [64]")
-flags.DEFINE_integer("vocab_size_chars", 55, "The size of the vocabulary [64]")
+flags.DEFINE_integer("vocab_size_words", 8003, "The size of the word vocabulary [8003]")
+flags.DEFINE_integer("vocab_size_chars", 55, "The size of the char vocabulary [55]")
 flags.DEFINE_integer("is_char_level_encoder", False, "Is the encoder char level based")
 flags.DEFINE_integer("is_char_level_decoder", False, "Is the decoder char level based")
 
