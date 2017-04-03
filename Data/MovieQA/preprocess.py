@@ -365,17 +365,10 @@ if __name__ == '__main__':
     cprint("Parsing Dataset", color="green")
     qa_pairs_words = parse_Cornwell_dataset_into_words()
     qa_pairs_chars = parse_Cornwell_dataset_into_chars()
-    cprint(qa_pairs_words[0][0], color="yellow")
-    cprint(qa_pairs_chars[0][0], color="yellow")
 
     # Create buckets
     cprint("Creating buckets", color="green")
-    cprint(len(qa_pairs_words), color="yellow")
-    cprint(len(qa_pairs_chars), color="yellow")
     qa_pairs_chars, qa_pairs_words = create_buckets(qa_pairs_chars, qa_pairs_words)
-
-    cprint(qa_pairs_words[0][0][0], color="yellow")
-    cprint(qa_pairs_chars[0][0][0], color="yellow")
 
     # Calculate bucket_lengths_words
     cprint("Calculating bucket_lengths_words", color="green")
