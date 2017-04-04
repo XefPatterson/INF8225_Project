@@ -93,7 +93,10 @@ if __name__ == '__main__':
     seq2seq = model.Seq2Seq(buckets=mix_bucket_lengths)
     seq2seq.build()
 
-    log_dir = "model_" + str(FLAGS.num_layers) + "x" + str(FLAGS.hidden_size) + "_embed" + str(FLAGS.embedding_size)
+    enc_name = "char" if FLAGS.is_char_level_encoder else "word"
+    dec_name = "char" if FLAGS.is_char_level_decoder else "word"
+    enc_dec_name = enc_name+"2"+dec_name
+    log_dir = enc_dec_name + "_" + str(FLAGS.num_layers) + "x" + str(FLAGS.hidden_size) + "_embed" + str(FLAGS.embedding_size)
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
     sv = tf.train.Supervisor(logdir=log_dir,
