@@ -47,7 +47,7 @@ class Seq2Seq(object):
         self.updates = []
 
         # Extract graph from graph to plot them
-        self.retrieve_attentions = False
+        self.retrieve_attentions = FLAGS.use_attention
 
         self.output_projection = None
         self.softmax_loss_function = None
@@ -88,15 +88,26 @@ class Seq2Seq(object):
             cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers)
 
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-            return seq2seq.embedding_rnn_seq2seq(
-                encoder_inputs,
-                decoder_inputs,
-                cell,
-                num_encoder_symbols=self.vocab_size_encoder,
-                num_decoder_symbols=self.vocab_size_decoder,
-                output_projection=self.output_projection,
-                embedding_size=FLAGS.embedding_size,
-                feed_previous=do_decode)
+            if FLAGS.use_attention:
+                return seq2seq.embedding_attention_seq2seq(
+                    encoder_inputs,
+                    decoder_inputs,
+                    cell,
+                    num_encoder_symbols=self.vocab_size_encoder,
+                    num_decoder_symbols=self.vocab_size_decoder,
+                    output_projection=self.output_projection,
+                    embedding_size=FLAGS.embedding_size,
+                    feed_previous=do_decode)
+            else:
+                return seq2seq.embedding_rnn_seq2seq(
+                    encoder_inputs,
+                    decoder_inputs,
+                    cell,
+                    num_encoder_symbols=self.vocab_size_encoder,
+                    num_decoder_symbols=self.vocab_size_decoder,
+                    output_projection=self.output_projection,
+                    embedding_size=FLAGS.embedding_size,
+                    feed_previous=do_decode)
 
         with tf.variable_scope("seq2seq") as _:
             model_infos = seq2seq.model_with_buckets(
@@ -107,12 +118,12 @@ class Seq2Seq(object):
                 self.buckets,
                 lambda x, y: seq2seq_f(x, y, self.is_training),
                 softmax_loss_function=self.softmax_loss_function,
-                save_attention=self.retrieve_attentions)
+                save_attention=FLAGS.use_attention)
 
             self.outputs = model_infos[0]
             self.losses = model_infos[1]
 
-            if self.retrieve_attentions:
+            if FLAGS.use_attention:
                 self.attentions = model_infos[2]
 
         # cprint("[*] Building model (D)", color="yellow")
@@ -180,7 +191,7 @@ class Seq2Seq(object):
                 self.gradient_norms[bucket_id]  # A scalar the gradient norm
                 ]
 
-        if self.retrieve_attentions:
+        if FLAGS.use_attention:
             output_feed.append(self.attentions[bucket_id])
 
         for l in range(decoder_size):
@@ -194,7 +205,7 @@ class Seq2Seq(object):
         outputs_dic = {
             "predictions": outputs[-decoder_size:]
         }
-        if self.retrieve_attentions:
+        if FLAGS.use_attention:
             outputs_dic["attentions"] = outputs[-decoder_size - 1]
 
         # If is_training:

@@ -30,6 +30,7 @@ flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.9]")
 flags.DEFINE_integer("num_layers", 3, "Num of layers [3]")
 flags.DEFINE_integer("hidden_size", 512, "Hidden size of RNN cell [256]")
 flags.DEFINE_integer("embedding_size", 512, "Symbol embedding size")
+flags.DEFINE_integer("use_attention", False, "Use attention mechanism?")
 
 FLAGS = flags.FLAGS
 
