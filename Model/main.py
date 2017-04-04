@@ -98,6 +98,8 @@ if __name__ == '__main__':
     enc_name = "char" if FLAGS.is_char_level_encoder else "word"
     dec_name = "char" if FLAGS.is_char_level_decoder else "word"
     enc_dec_name = enc_name+"2"+dec_name
+    if FLAGS.use_attention:
+        enc_dec_name += "Att"
     log_dir = enc_dec_name + "_" + str(FLAGS.num_layers) + "x" + str(FLAGS.hidden_size) + "_embed" + str(FLAGS.embedding_size)
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
