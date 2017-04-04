@@ -47,7 +47,7 @@ class Seq2Seq(object):
         self.updates = []
 
         # Extract graph from graph to plot them
-        self.retrieve_attentions = True
+        self.retrieve_attentions = False
 
         self.output_projection = None
         self.softmax_loss_function = None
@@ -88,14 +88,14 @@ class Seq2Seq(object):
             cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers)
 
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-            return seq2seq.embedding_attention_seq2seq(
+            return seq2seq.embedding_rnn_seq2seq(
                 encoder_inputs,
                 decoder_inputs,
                 cell,
                 num_encoder_symbols=self.vocab_size_encoder,
                 num_decoder_symbols=self.vocab_size_decoder,
                 output_projection=self.output_projection,
-                embedding_size=128,
+                embedding_size=FLAGS.embedding_size,
                 feed_previous=do_decode)
 
         with tf.variable_scope("seq2seq") as _:
@@ -106,7 +106,8 @@ class Seq2Seq(object):
                 self.target_weights,
                 self.buckets,
                 lambda x, y: seq2seq_f(x, y, self.is_training),
-                softmax_loss_function=self.softmax_loss_function)
+                softmax_loss_function=self.softmax_loss_function,
+                save_attention=self.retrieve_attentions)
 
             self.outputs = model_infos[0]
             self.losses = model_infos[1]
@@ -168,14 +169,17 @@ class Seq2Seq(object):
         for l in range(decoder_size):
             input_feed[self.targets[l].name] = answers[:, l]
             input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l], 0).astype(np.float32)
+
+        #Loss, a scalar
+        output_feed = [self.losses[bucket_id]]
+
         if is_training:
-            output_feed = [
+            output_feed += [
                 self.global_step,  # Current global step
                 self.updates[bucket_id],  # Nothing
-                self.gradient_norms[bucket_id],  # A scalar the gradient norm
-                self.losses[bucket_id]]  # Training loss, a scalar
-        else:
-            output_feed = []
+                self.gradient_norms[bucket_id]  # A scalar the gradient norm
+                ]
+
         if self.retrieve_attentions:
             output_feed.append(self.attentions[bucket_id])
 
@@ -183,7 +187,7 @@ class Seq2Seq(object):
             # Will return a numpy array [batch_size x size_vocab x 1]. Value are not restricted to [-1, 1]
             output_feed.append(self.outputs[bucket_id][l])
 
-        # outputs is a list of size (3 + decoder_size)
+        # Outputs is a list of size (3 + decoder_size)
         outputs = session.run(output_feed, input_feed)
 
         # Cleaner output dic
@@ -193,7 +197,7 @@ class Seq2Seq(object):
         if self.retrieve_attentions:
             outputs_dic["attentions"] = outputs[-decoder_size - 1]
 
-        if is_training:
-            outputs_dic["losses"] = outputs[3]
+        # If is_training:
+        outputs_dic["losses"] = outputs[0]
 
         return outputs_dic

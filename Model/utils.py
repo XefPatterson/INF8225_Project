@@ -27,7 +27,6 @@ def get_batch(data, buckets, bucket_id, batch_size, indices=None):
 
 def get_mix_batch(data_chars, data_words, buckets_char, buckets_words, is_char_encoder, is_char_decode, bucket_id,
                   batch_size):
-    # TODO: @julien je te laisse arranger les paires word-char d'exemples ensembles :)
     assert (len(data_chars[bucket_id]) == len(data_words[bucket_id])), "Different size between words and char dataset"
     indices = np.random.choice(len(data_chars[bucket_id]), size=batch_size)
 
@@ -102,7 +101,9 @@ def plot_attention(questions, attentions, predictions, idx_to_char, idx_to_word,
         tuples[i].set_yticks(range(len(question)), minor=False)
         tuples[i].set_yticklabels(question, fontsize='xx-small')
     plt.axis('off')
-    plt.savefig("attention_matrix.png")
+    #plt.savefig("attention_matrix.png")
+    fig.savefig("attention_matrix.png", dpi=300)
+    plt.close()
 
 def encrypt_single(string, symbol_to_idx):
     return np.array([symbol_to_idx[char] for char in string.lower()])
