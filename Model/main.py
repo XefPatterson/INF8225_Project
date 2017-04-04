@@ -143,5 +143,5 @@ if __name__ == '__main__':
                 print("\n [Verbose] Test batch loss =", out['losses'], '\n')
 
             # Plot attentions
-            utils.plot_attention(questions, out["attentions"], out["predictions"], idx_to_char, idx_to_words,
-                                FLAGS.batch_size, FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder)
+            #utils.plot_attention(questions, out["attentions"], out["predictions"], idx_to_char, idx_to_words,
+            #                    FLAGS.batch_size, FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder)
