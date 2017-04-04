@@ -93,22 +93,17 @@ if __name__ == '__main__':
     seq2seq = model.Seq2Seq(buckets=mix_bucket_lengths)
     seq2seq.build()
 
+    # Relevant log dir:
     enc_name = "char" if FLAGS.is_char_level_encoder else "word"
     dec_name = "char" if FLAGS.is_char_level_decoder else "word"
     enc_dec_name = enc_name+"2"+dec_name
     log_dir = enc_dec_name + "_" + str(FLAGS.num_layers) + "x" + str(FLAGS.hidden_size) + "_embed" + str(FLAGS.embedding_size)
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
+
     sv = tf.train.Supervisor(logdir=log_dir,
                              global_step=seq2seq.global_step,
                              save_model_secs=FLAGS.save_frequency)
-
-    # Test : Start small, expand.
-    n_bucket_to_train = 1
-    epochs_before_increase = 1
-    until_increase_to_more_buckets = epochs_before_increase
-    if verbose:
-        print("\n [Verbose] Using buckets :", bucket_sizes[:n_bucket_to_train], "\n")
 
     with sv.managed_session() as sess:
         print(sess.run(seq2seq.global_step))
@@ -117,20 +112,11 @@ if __name__ == '__main__':
             if verbose:
                 print("\n [Verbose] Iter :", iter, '\n')
 
-            if until_increase_to_more_buckets == 0 and n_bucket_to_train < len(bucket_sizes)-1:
-                if verbose:
-                    print("\n [Verbose] Expanding buckets to learn from... \n")
-                n_bucket_to_train += 1
-                until_increase_to_more_buckets = epochs_before_increase
-            else:
-                until_increase_to_more_buckets -= 1
-
             train_losses = []
-
             # Start epoch :
             for _ in trange(FLAGS.nb_iter_per_epoch, leave=False):
                 # Pick bucket
-                chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes[:n_bucket_to_train])
+                chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
                 questions, answers = utils.get_mix_batch(qa_pairs, qa_pairs_words,
                                                          bucket_lengths, bucket_lengths_words,
                                                          FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder,
@@ -143,7 +129,7 @@ if __name__ == '__main__':
                 print(" [Verbose] Average loss for epoch =", np.mean(out['losses']), '\n')
 
             # Run testing
-            chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes[:n_bucket_to_train])
+            chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
             questions, answers = utils.get_mix_batch(qa_pairs, qa_pairs_words,bucket_lengths, bucket_lengths_words,
                                                      FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder,
                                                      chosen_bucket_id, FLAGS.batch_size)
