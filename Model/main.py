@@ -6,7 +6,7 @@ import os
 import utils
 import numpy as np
 
-debug = False  # Fast testing (keep only the first two buckets)
+debug = True  # Fast testing (keep only the first two buckets)
 verbose = True
 
 flags = tf.app.flags
@@ -15,7 +15,7 @@ flags.DEFINE_integer("save_frequency", 600, "Output frequency")
 flags.DEFINE_integer("nb_iter_per_epoch", 100, "Output frequency")
 
 # Optimization
-flags.DEFINE_float("learning_rate", 0.00005, "Learning rate of for adam [0.0001")
+flags.DEFINE_float("learning_rate", 0.001, "Learning rate of for adam [0.0001")
 flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 flags.DEFINE_integer("batch_size", 64, "The size of the batch [64]")
 
@@ -28,9 +28,9 @@ flags.DEFINE_integer("is_char_level_decoder", True, "Is the decoder char level b
 
 flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.9]")
 flags.DEFINE_integer("num_layers", 3, "Num of layers [3]")
-flags.DEFINE_integer("hidden_size", 512, "Hidden size of RNN cell [256]")
-flags.DEFINE_integer("embedding_size", 512, "Symbol embedding size")
-flags.DEFINE_integer("use_attention", False, "Use attention mechanism?")
+flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [256]")
+flags.DEFINE_integer("embedding_size", 64, "Symbol embedding size")
+flags.DEFINE_integer("use_attention", True, "Use attention mechanism?")
 
 FLAGS = flags.FLAGS
 
@@ -59,15 +59,16 @@ if __name__ == '__main__':
 
     if debug:
         # Faster testing
-        bucket_lengths = [bucket_lengths[0]]
-        bucket_lengths_words = [bucket_lengths_words[0]]
-        bucket_sizes = [bucket_sizes[0]]
-        bucket_sizes_words = [bucket_sizes_words[0]]
+        to_bucket = 2
+        bucket_lengths = bucket_lengths[:to_bucket]
+        bucket_lengths_words = bucket_lengths_words[:to_bucket]
+        bucket_sizes = bucket_sizes[:to_bucket]
+        bucket_sizes_words = bucket_sizes_words[:to_bucket]
         FLAGS.nb_iter_per_epoch = 100
         FLAGS.hidden_size = 256
         FLAGS.num_layers = 1
         FLAGS.batch_size = 64
-        FLAGS.save_frequency = 30
+        FLAGS.save_frequency = 120
 
     assert len(bucket_lengths) == len(bucket_lengths_words) , "Not the same number of buckets!"
     mix_bucket_lengths = []
@@ -107,7 +108,7 @@ if __name__ == '__main__':
     sv = tf.train.Supervisor(logdir=log_dir,
                              global_step=seq2seq.global_step,
                              save_model_secs=FLAGS.save_frequency)
-
+    avg_train_losses = []
     with sv.managed_session() as sess:
         print(sess.run(seq2seq.global_step))
         while not sv.should_stop():
@@ -130,12 +131,17 @@ if __name__ == '__main__':
                 train_losses.append(out['losses'])
             if verbose:
                 print(" [Verbose] Average loss for epoch =", np.mean(out['losses']), '\n')
+            avg_train_losses.append(np.mean(out['losses']))
 
+            #Cheap save for now.
+            with open(os.path.join(log_dir, "losses.pkl"), "wb") as f:
+                pickle.dump({"train_losses":avg_train_losses}, f)
             # Run testing
             chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
-            questions, answers = utils.get_mix_batch(qa_pairs, qa_pairs_words,bucket_lengths, bucket_lengths_words,
+            questions, answers = utils.get_mix_batch(qa_pairs, qa_pairs_words, bucket_lengths, bucket_lengths_words,
                                                      FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder,
                                                      chosen_bucket_id, FLAGS.batch_size)
+
             out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers,
                                                  is_training=False)
 
@@ -146,5 +152,6 @@ if __name__ == '__main__':
                 print("\n [Verbose] Test batch loss =", out['losses'], '\n')
 
             # Plot attentions
-            #utils.plot_attention(questions, out["attentions"], out["predictions"], idx_to_char, idx_to_words,
-            #                    FLAGS.batch_size, FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder)
+            if FLAGS.use_attention:
+                utils.plot_attention(questions, out["attentions"], out["predictions"], idx_to_char, idx_to_words,
+                                        FLAGS.batch_size, FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder)

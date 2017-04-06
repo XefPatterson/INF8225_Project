@@ -105,6 +105,11 @@ PARSE CORNELL DATASET INTO CHARS
 """
 
 
+"""
+------------------------------------
+PARSE CORNELL DATASET INTO CHARS
+------------------------------------
+"""
 def parse_Cornwell_dataset_into_chars():
     chars = ['<PAD>', '<UNK>', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
              'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q',
@@ -115,6 +120,7 @@ def parse_Cornwell_dataset_into_chars():
 
     idx_to_chars = {i:c for i,c in enumerate(chars)}
     chars_to_idx = {c:i for i,c in enumerate(chars)}
+
 
     with open("idx_to_chars.pkl", 'wb') as f:
         cPickle.dump(idx_to_chars, f, protocol=cPickle.HIGHEST_PROTOCOL)
@@ -163,10 +169,43 @@ def parse_Cornwell_dataset_into_words():
         'mina': 1
     }
 
-    UNK = 'unk'
     VOCAB_SIZE = 8000
 
-    bucket_lengths_words = [(2, 2), (4, 4), (8, 8), (16, 16), (30, 30)]
+
+    '''
+        We need 4 files
+        1. train.enc : Encoder input for training
+        2. train.dec : Decoder input for training
+        3. test.enc  : Encoder input for testing
+        4. test.dec  : Decoder input for testing
+    '''
+
+    def prepare_seq2seq_files(questions, answers, path='', TESTSET_SIZE=30000):
+
+        # open files
+        train_enc = open(path + 'train.enc', 'w')
+        train_dec = open(path + 'train.dec', 'w')
+        test_enc = open(path + 'test.enc', 'w')
+        test_dec = open(path + 'test.dec', 'w')
+
+        # choose 30,000 (TESTSET_SIZE) items to put into testset
+        test_ids = random.sample([i for i in range(len(questions))], TESTSET_SIZE)
+
+        for i in range(len(questions)):
+            if i in test_ids:
+                test_enc.write(questions[i] + '\n')
+                test_dec.write(answers[i] + '\n')
+            else:
+                train_enc.write(questions[i] + '\n')
+                train_dec.write(answers[i] + '\n')
+            if i % 10000 == 0:
+                print('\n>> written {} lines'.format(i))
+
+        # close files
+        train_enc.close()
+        train_dec.close()
+        test_enc.close()
+        test_dec.close()
 
     '''
      remove anything that isn't in the vocabulary
@@ -190,8 +229,8 @@ def parse_Cornwell_dataset_into_words():
         assert len(qseq) == len(aseq)
 
         for i in range(raw_data_len):
-            # qlen, alen = len(qseq[i].split(' ')), len(aseq[i].split(' '))
-            # if qlen >= limit['minq'] and qlen <= limit['maxq']:
+            #qlen, alen = len(qseq[i].split(' ')), len(aseq[i].split(' '))
+            #if qlen >= limit['minq'] and qlen <= limit['maxq']:
             #    if alen >= limit['mina'] and alen <= limit['maxa']:
             filtered_q.append(qseq[i])
             filtered_a.append(aseq[i])
@@ -295,7 +334,8 @@ def parse_Cornwell_dataset_into_words():
             if word in lookup:
                 indices.append(lookup[word])
             else:
-                indices.append(lookup["<UNK>"])
+                indices.append(lookup['<UNK>'])
+
         indices.append(lookup['<EOS>'])
         return indices
 
@@ -333,14 +373,14 @@ def parse_Cornwell_dataset_into_words():
     for q, a in zip(qtokenized[141:145], atokenized[141:145]):
         print('q : [{0}]; a : [{1}]'.format(q, a))
 
-    # indexing -> idx2w, w2idx 
+    # indexing -> idx2w, w2idx
     print('\n >> Index words')
     idx2w, w2idx = index_(qtokenized + atokenized, vocab_size=VOCAB_SIZE)
 
     # filter out sentences with too many unknowns
-    #print('\n >> Filter Unknowns')
-    #qtokenized, atokenized = filter_unk(qtokenized, atokenized, w2idx)
-    #print('\n Final dataset len : ' + str(len(qtokenized)))
+    # print('\n >> Filter Unknowns')
+    # qtokenized, atokenized = filter_unk(qtokenized, atokenized, w2idx)
+    # print('\n Final dataset len : ' + str(len(qtokenized)))
 
     print('\n >> Packing data up')
     qa_pairs_words = pack_together(qtokenized, atokenized, w2idx)
@@ -365,10 +405,15 @@ if __name__ == '__main__':
     cprint("Parsing Dataset", color="green")
     qa_pairs_words = parse_Cornwell_dataset_into_words()
     qa_pairs_chars = parse_Cornwell_dataset_into_chars()
+    cprint(qa_pairs_words[0][0], color="yellow")
+    cprint(qa_pairs_chars[0][0], color="yellow")
 
     # Create buckets
     cprint("Creating buckets", color="green")
     qa_pairs_chars, qa_pairs_words = create_buckets(qa_pairs_chars, qa_pairs_words)
+
+    cprint(qa_pairs_words[0][0][0], color="yellow")
+    cprint(qa_pairs_chars[0][0][0], color="yellow")
 
     # Calculate bucket_lengths_words
     cprint("Calculating bucket_lengths_words", color="green")

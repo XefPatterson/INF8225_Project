@@ -46,7 +46,6 @@ def decrypt_single(sentence, idx_to_symbol, words=False):
 def decrypt(questions, answers, predictions, idx_to_char, idx_to_word, batch_size,
             char_encoder=True, char_decoder=True, number_to_decrypt=4):
     index_to_decrypt = np.random.choice(range(batch_size), number_to_decrypt)
-    predictions = [np.squeeze(prediction) for prediction in predictions]
     predictions = [np.argmax(prediction, axis=1) for prediction in predictions]
     predictions = np.transpose(np.asarray(predictions))
 
@@ -58,10 +57,10 @@ def decrypt(questions, answers, predictions, idx_to_char, idx_to_word, batch_siz
 
         if char_decoder:
             true_answer = decrypt_single(answers[index], idx_to_char, words=False)
-            fake_answer = decrypt_single(predictions[index], idx_to_char, words=False)
+            fake_answer = decrypt_single(predictions[index, :], idx_to_char, words=False)
         else:
             true_answer = decrypt_single(answers[index], idx_to_word, words=True)
-            fake_answer = decrypt_single(predictions[index], idx_to_word, words=True)
+            fake_answer = decrypt_single(predictions[index, :], idx_to_word, words=True)
 
         cprint("Sample {}".format(index), color="yellow")
         cprint("Question: > {}".format(question), color="yellow")

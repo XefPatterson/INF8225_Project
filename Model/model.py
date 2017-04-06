@@ -116,7 +116,7 @@ class Seq2Seq(object):
                 self.targets,
                 self.target_weights,
                 self.buckets,
-                lambda x, y: seq2seq_f(x, y, self.is_training),
+                lambda x, y: seq2seq_f(x, y, tf.logical_not(self.is_training)),
                 softmax_loss_function=self.softmax_loss_function,
                 save_attention=FLAGS.use_attention)
 
