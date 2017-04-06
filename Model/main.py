@@ -6,7 +6,7 @@ import os
 import utils
 import numpy as np
 
-debug = True  # Fast testing (keep only the first two buckets)
+debug = False  # Fast testing (keep only the first two buckets)
 verbose = True
 
 flags = tf.app.flags
@@ -29,7 +29,7 @@ flags.DEFINE_integer("is_char_level_decoder", True, "Is the decoder char level b
 flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.9]")
 flags.DEFINE_integer("num_layers", 3, "Num of layers [3]")
 flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [256]")
-flags.DEFINE_integer("embedding_size", 64, "Symbol embedding size")
+flags.DEFINE_integer("embedding_size", 128, "Symbol embedding size")
 flags.DEFINE_integer("use_attention", True, "Use attention mechanism?")
 
 FLAGS = flags.FLAGS
@@ -129,8 +129,7 @@ if __name__ == '__main__':
                 # Run session
                 out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers, is_training=True)
                 train_losses.append(out['losses'])
-            if verbose:
-                print(" [Verbose] Average loss for epoch =", np.mean(out['losses']), '\n')
+
             avg_train_losses.append(np.mean(out['losses']))
 
             #Cheap save for now.
@@ -149,9 +148,11 @@ if __name__ == '__main__':
             if verbose:
                 utils.decrypt(questions, answers, out["predictions"], idx_to_char, idx_to_words, FLAGS.batch_size,
                               char_encoder=FLAGS.is_char_level_encoder, char_decoder=FLAGS.is_char_level_decoder)
-                print("\n [Verbose] Test batch loss =", out['losses'], '\n')
+                print(" [Verbose] TRAIN average loss for epoch =", avg_train_losses[-1], '\n')
+                print(" [Verbose] TEST batch loss =", out['losses'], '\n')
 
             # Plot attentions
             if FLAGS.use_attention:
                 utils.plot_attention(questions, out["attentions"], out["predictions"], idx_to_char, idx_to_words,
-                                        FLAGS.batch_size, FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder)
+                                     FLAGS.batch_size, FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder,
+                                     path=os.path.join(log_dir, "attention.png"))

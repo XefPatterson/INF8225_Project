@@ -69,8 +69,8 @@ def decrypt(questions, answers, predictions, idx_to_char, idx_to_word, batch_siz
 
 
 def plot_attention(questions, attentions, predictions, idx_to_char, idx_to_word, batch_size,
-            char_encoder=True, char_decoder=True, nb_figures=4):
-    fig, (tuples) = plt.subplots(1, nb_figures)
+            char_encoder=True, char_decoder=True, nb_figures=3, path="attention_matrix.png"):
+    fig, (tuples) = plt.subplots(nb_figures, 1, figsize=(10, 20))
     for i in range(nb_figures):
         index = np.random.choice(range(batch_size), 1)[0]
 
@@ -98,10 +98,10 @@ def plot_attention(questions, attentions, predictions, idx_to_char, idx_to_word,
         tuples[i].set_xticklabels(answer, fontsize='xx-small')
 
         tuples[i].set_yticks(range(len(question)), minor=False)
-        tuples[i].set_yticklabels(question, fontsize='xx-small')
+        tuples[i].set_yticklabels(question, fontsize='x-small')
     plt.axis('off')
     #plt.savefig("attention_matrix.png")
-    fig.savefig("attention_matrix.png", dpi=300)
+    fig.savefig(path, dpi=300)
     plt.close()
 
 def encrypt_single(string, symbol_to_idx):
