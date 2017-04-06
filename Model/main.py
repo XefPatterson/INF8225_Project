@@ -6,16 +6,16 @@ import os
 import utils
 import numpy as np
 
-debug = False  # Fast testing (keep only the first two buckets)
+debug = True  # Fast testing (keep only the first two buckets)
 verbose = True
 
 flags = tf.app.flags
 flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
-flags.DEFINE_integer("save_frequency", 600, "Output frequency")
+flags.DEFINE_integer("save_frequency", 1800, "Output frequency")
 flags.DEFINE_integer("nb_iter_per_epoch", 100, "Output frequency")
 
 # Optimization
-flags.DEFINE_float("learning_rate", 0.001, "Learning rate of for adam [0.0001")
+flags.DEFINE_float("learning_rate", 0.0005, "Learning rate of for adam [0.0001")
 flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 flags.DEFINE_integer("batch_size", 64, "The size of the batch [64]")
 
@@ -31,6 +31,7 @@ flags.DEFINE_integer("num_layers", 3, "Num of layers [3]")
 flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [256]")
 flags.DEFINE_integer("embedding_size", 128, "Symbol embedding size")
 flags.DEFINE_integer("use_attention", True, "Use attention mechanism?")
+flags.DEFINE_integer("valid_start", 0.9, "Validation set start ratio")
 
 FLAGS = flags.FLAGS
 
@@ -109,6 +110,7 @@ if __name__ == '__main__':
                              global_step=seq2seq.global_step,
                              save_model_secs=FLAGS.save_frequency)
     avg_train_losses = []
+    valid_losses = []
     with sv.managed_session() as sess:
         print(sess.run(seq2seq.global_step))
         while not sv.should_stop():
@@ -124,7 +126,8 @@ if __name__ == '__main__':
                 questions, answers = utils.get_mix_batch(qa_pairs, qa_pairs_words,
                                                          bucket_lengths, bucket_lengths_words,
                                                          FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder,
-                                                         chosen_bucket_id, FLAGS.batch_size)
+                                                         chosen_bucket_id, FLAGS.batch_size, train=True,
+                                                         valid_start=FLAGS.valid_start)
 
                 # Run session
                 out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers, is_training=True)
@@ -132,18 +135,16 @@ if __name__ == '__main__':
 
             avg_train_losses.append(np.mean(out['losses']))
 
-            #Cheap save for now.
-            with open(os.path.join(log_dir, "losses.pkl"), "wb") as f:
-                pickle.dump({"train_losses":avg_train_losses}, f)
             # Run testing
             chosen_bucket_id = utils.get_random_bucket_id_pkl(bucket_sizes)
             questions, answers = utils.get_mix_batch(qa_pairs, qa_pairs_words, bucket_lengths, bucket_lengths_words,
                                                      FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder,
-                                                     chosen_bucket_id, FLAGS.batch_size)
+                                                     chosen_bucket_id, FLAGS.batch_size, train=False,
+                                                     valid_start=FLAGS.valid_start)
 
             out = seq2seq.forward_with_feed_dict(chosen_bucket_id, sess, questions, answers,
                                                  is_training=False)
-
+            valid_losses.append(out['losses'])
             # Decrypt and display answers
             if verbose:
                 utils.decrypt(questions, answers, out["predictions"], idx_to_char, idx_to_words, FLAGS.batch_size,
@@ -156,3 +157,8 @@ if __name__ == '__main__':
                 utils.plot_attention(questions, out["attentions"], out["predictions"], idx_to_char, idx_to_words,
                                      FLAGS.batch_size, FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder,
                                      path=os.path.join(log_dir, "attention.png"))
+
+            utils.plot_curves(avg_train_losses, valid_losses, os.path.join(log_dir, "curves.png") )
+            #Cheap save for now.
+            with open(os.path.join(log_dir, "losses.pkl"), "wb") as f:
+                pickle.dump({"train_losses": avg_train_losses, "valid_losses": valid_losses}, f)

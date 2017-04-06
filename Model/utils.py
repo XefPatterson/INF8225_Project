@@ -26,9 +26,14 @@ def get_batch(data, buckets, bucket_id, batch_size, indices=None):
 
 
 def get_mix_batch(data_chars, data_words, buckets_char, buckets_words, is_char_encoder, is_char_decode, bucket_id,
-                  batch_size):
+                  batch_size, valid_start=0.9, train=True):
     assert (len(data_chars[bucket_id]) == len(data_words[bucket_id])), "Different size between words and char dataset"
-    indices = np.random.choice(len(data_chars[bucket_id]), size=batch_size)
+
+    if train:
+        indices = np.random.choice(int(valid_start*len(data_chars[bucket_id])), size=batch_size)
+    else:
+        indices = np.random.choice(np.arange(int(valid_start*len(data_chars[bucket_id])) ,len(data_chars[bucket_id])),
+                                                               size=batch_size)
 
     q_c, a_c = get_batch(data_chars, buckets_char, bucket_id, batch_size, indices)
     q_w, a_w = get_batch(data_words, buckets_words, bucket_id, batch_size, indices)
@@ -106,3 +111,12 @@ def plot_attention(questions, attentions, predictions, idx_to_char, idx_to_word,
 
 def encrypt_single(string, symbol_to_idx):
     return np.array([symbol_to_idx[char] for char in string.lower()])
+
+
+def plot_curves(train_losses, valid_losses, path="learning_curves.png"):
+    plt.figure(figsize=(8, 8))
+    plt.plot(np.arange(len(train_losses)), train_losses, np.arange(len(valid_losses)), valid_losses)
+    plt.ylabel('Losses')
+    plt.xlabel('Epochs')
+    plt.savefig(path)
+    plt.close
