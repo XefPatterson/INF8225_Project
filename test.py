@@ -140,8 +140,6 @@ if debug:
 
 g = GraphHandler()
 
-# g = None
-
 timestamps = []
 
 
@@ -150,20 +148,21 @@ def handle_incoming_messages(graph=g):
     data = request.json
     sender = data['entry'][0]['messaging'][0]['sender']['id']
     print("Incoming message", data['entry'][0]['messaging'][0])
-    # try:
-    if data['entry'][0]['messaging'][0]["sender"]["id"] == "388754244807763":
-        print("received self message")
-        return "ok"
-    if data['entry'][0]['messaging'][0]["timestamp"] in timestamps:
-        return "ok"
-    else:
-        timestamps.append(data['entry'][0]['messaging'][0]["timestamp"])
-    message = data['entry'][0]['messaging'][0]['message']['text']
-    print("Text message:", message)
-    out = graph.feed_new_sentence(sentence=message)
-    reply(sender, out)
-    # except:
-    #     print("Error while receiving a message")
+    try:
+        if data['entry'][0]['messaging'][0]["sender"]["id"] == "388754244807763":
+            print("received self message")
+            return "ok"
+        if data['entry'][0]['messaging'][0]["timestamp"] in timestamps:
+            return "ok"
+        else:
+            timestamps.append(data['entry'][0]['messaging'][0]["timestamp"])
+
+        message = data['entry'][0]['messaging'][0]['message']['text']
+        print("Text message:", message)
+        out = graph.feed_new_sentence(sentence=message)
+        reply(sender, out)
+    except:
+        print("Error while receiving a message")
     return "ok"
 
 
