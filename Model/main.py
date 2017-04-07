@@ -33,6 +33,8 @@ flags.DEFINE_integer("embedding_size", 128, "Symbol embedding size")
 flags.DEFINE_integer("use_attention", True, "Use attention mechanism?")
 flags.DEFINE_integer("valid_start", 0.9, "Validation set start ratio")
 
+flags.DEFINE_string("dataset", "messenger", "Dataset to use")
+
 FLAGS = flags.FLAGS
 
 if __name__ == '__main__':
@@ -44,19 +46,34 @@ if __name__ == '__main__':
 
     file_name = os.path.dirname(os.path.abspath(__file__))
 
-    # Load data in RAM:
-    with open(os.path.join('..', 'Data', 'MovieQA', 'QA_Pairs_Chars_Buckets.pkl'), 'rb') as f:
-        data = pickle.load(f)
-        qa_pairs = data['qa_pairs']
-        bucket_sizes = data['bucket_sizes']
-        bucket_lengths = data['bucket_lengths']
+    if FLAGS.dataset == "movie":
+        # Load data in RAM:
+        with open(os.path.join('..', 'Data', 'MovieQA', 'QA_Pairs_Chars_Buckets.pkl'), 'rb') as f:
+            data = pickle.load(f)
+            qa_pairs = data['qa_pairs']
+            bucket_sizes = data['bucket_sizes']
+            bucket_lengths = data['bucket_lengths']
 
-    # TODO: support Python3
-    with open(os.path.join('..', 'Data', 'MovieQA', 'QA_Pairs_Words_Buckets.pkl'), 'rb') as f:
-        data_words = pickle.load(f, encoding='latin1')
-        qa_pairs_words = data_words['qa_pairs']
-        bucket_sizes_words = data_words['bucket_sizes']
-        bucket_lengths_words = data_words['bucket_lengths']
+        with open(os.path.join('..', 'Data', 'MovieQA', 'QA_Pairs_Words_Buckets.pkl'), 'rb') as f:
+            data_words = pickle.load(f, encoding='latin1')
+            qa_pairs_words = data_words['qa_pairs']
+            bucket_sizes_words = data_words['bucket_sizes']
+            bucket_lengths_words = data_words['bucket_lengths']
+    else:
+        with open(os.path.join('..', 'Data', 'Messenger', 'QA_Pairs_Chars_Buckets.pkl'), 'rb') as f:
+            data = pickle.load(f)
+            qa_pairs = data['qa_pairs']
+            bucket_sizes = data['bucket_sizes']
+            bucket_lengths = data['bucket_lengths']
+
+        # Flemme de modifier le code en profondeur ^^
+        data_words = data
+        qa_pairs_words = qa_pairs
+        bucket_sizes_words = bucket_sizes
+        bucket_lengths_words = bucket_lengths
+
+        # Un bon petit assert suffira, je pense
+        assert FLAGS.is_char_level_encoder == FLAGS.is_char_level_decoder and FLAGS.is_char_level_encoder is True, "With Messenger dataset, encoder and decoder should be at char level"
 
     if debug:
         # Faster testing
@@ -71,21 +88,21 @@ if __name__ == '__main__':
         FLAGS.batch_size = 64
         FLAGS.save_frequency = 120
 
-    assert len(bucket_lengths) == len(bucket_lengths_words) , "Not the same number of buckets!"
+    assert len(bucket_lengths) == len(bucket_lengths_words), "Not the same number of buckets!"
     mix_bucket_lengths = []
 
-    if FLAGS.is_char_level_encoder and FLAGS.is_char_level_decoder: # CHAR | CHAR
+    if FLAGS.is_char_level_encoder and FLAGS.is_char_level_decoder:  # CHAR | CHAR
         mix_bucket_lengths = bucket_lengths
 
-    elif not FLAGS.is_char_level_encoder and not FLAGS.is_char_level_decoder: # WORD | WORD
+    elif not FLAGS.is_char_level_encoder and not FLAGS.is_char_level_decoder:  # WORD | WORD
         mix_bucket_lengths = bucket_lengths_words
 
     else:
         for i in range(len(bucket_lengths)):
-            if not FLAGS.is_char_level_encoder and FLAGS.is_char_level_decoder: # WORD | CHAR
+            if not FLAGS.is_char_level_encoder and FLAGS.is_char_level_decoder:  # WORD | CHAR
                 mix_bucket_lengths.append((bucket_lengths_words[i][0], bucket_lengths[i][1]))
 
-            if FLAGS.is_char_level_encoder and not FLAGS.is_char_level_decoder: # CHAR | WORD
+            if FLAGS.is_char_level_encoder and not FLAGS.is_char_level_decoder:  # CHAR | WORD
                 mix_bucket_lengths.append((bucket_lengths[i][0], bucket_lengths_words[i][1]))
 
     if verbose:
@@ -99,10 +116,11 @@ if __name__ == '__main__':
     # Relevant log dir:
     enc_name = "char" if FLAGS.is_char_level_encoder else "word"
     dec_name = "char" if FLAGS.is_char_level_decoder else "word"
-    enc_dec_name = enc_name+"2"+dec_name
+    enc_dec_name = enc_name + "2" + dec_name
     if FLAGS.use_attention:
         enc_dec_name += "Att"
-    log_dir = enc_dec_name + "_" + str(FLAGS.num_layers) + "x" + str(FLAGS.hidden_size) + "_embed" + str(FLAGS.embedding_size)
+    log_dir = enc_dec_name + "_" + str(FLAGS.num_layers) + "x" + str(FLAGS.hidden_size) + "_embed" + str(
+        FLAGS.embedding_size)
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
 
@@ -158,7 +176,7 @@ if __name__ == '__main__':
                                      FLAGS.batch_size, FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder,
                                      path=os.path.join(log_dir, "attention.png"))
 
-            utils.plot_curves(avg_train_losses, valid_losses, os.path.join(log_dir, "curves.png") )
-            #Cheap save for now.
+            utils.plot_curves(avg_train_losses, valid_losses, os.path.join(log_dir, "curves.png"))
+            # Cheap save for now.
             with open(os.path.join(log_dir, "losses.pkl"), "wb") as f:
                 pickle.dump({"train_losses": avg_train_losses, "valid_losses": valid_losses}, f)
