@@ -6,13 +6,13 @@ import os
 import utils
 import numpy as np
 
-debug = True  # Fast testing (keep only the first two buckets)
+debug = False  # Fast testing (keep only the first two buckets)
 verbose = True
 
 flags = tf.app.flags
 flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
 flags.DEFINE_integer("save_frequency", 1800, "Output frequency")
-flags.DEFINE_integer("nb_iter_per_epoch", 100, "Output frequency")
+flags.DEFINE_integer("nb_iter_per_epoch", 250, "Output frequency")
 
 # Optimization
 flags.DEFINE_float("learning_rate", 0.0005, "Learning rate of for adam [0.0001")
@@ -23,7 +23,7 @@ flags.DEFINE_integer("batch_size", 64, "The size of the batch [64]")
 flags.DEFINE_integer("num_samples", 8003, "Number of samples for sampled softmax.")
 flags.DEFINE_integer("vocab_size_words", 8003, "The size of the word vocabulary [8003]")
 flags.DEFINE_integer("vocab_size_chars", 55, "The size of the char vocabulary [55]")
-flags.DEFINE_integer("is_char_level_encoder", False, "Is the encoder char level based")
+flags.DEFINE_integer("is_char_level_encoder", True, "Is the encoder char level based")
 flags.DEFINE_integer("is_char_level_decoder", True, "Is the decoder char level based")
 
 flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.9]")
