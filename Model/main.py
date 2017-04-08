@@ -26,12 +26,12 @@ flags.DEFINE_integer("vocab_size_chars", 55, "The size of the char vocabulary [5
 flags.DEFINE_integer("is_char_level_encoder", True, "Is the encoder char level based")
 flags.DEFINE_integer("is_char_level_decoder", True, "Is the decoder char level based")
 
-flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.9]")
-flags.DEFINE_integer("num_layers", 3, "Num of layers [3]")
+flags.DEFINE_float("keep_prob", 0.75, "Dropout ratio [0.9]")
+flags.DEFINE_integer("num_layers", 2, "Num of layers [3]")
 flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [256]")
 flags.DEFINE_integer("embedding_size", 128, "Symbol embedding size")
-flags.DEFINE_integer("use_attention", True, "Use attention mechanism?")
-flags.DEFINE_integer("valid_start", 0.9, "Validation set start ratio")
+flags.DEFINE_integer("use_attention", False, "Use attention mechanism?")
+flags.DEFINE_integer("valid_start", 0.95, "Validation set start ratio")
 
 flags.DEFINE_string("dataset", "messenger", "Dataset to use")
 
@@ -105,6 +105,10 @@ if __name__ == '__main__':
             if FLAGS.is_char_level_encoder and not FLAGS.is_char_level_decoder:  # CHAR | WORD
                 mix_bucket_lengths.append((bucket_lengths[i][0], bucket_lengths_words[i][1]))
 
+    mix_bucket_lengths = mix_bucket_lengths[:-1]
+    bucket_sizes = bucket_sizes[:-1]
+    bucket_sizes_words = bucket_sizes_words[:-1]
+
     if verbose:
         print("\n [Verbose] Zipped buckets :", mix_bucket_lengths)
         print(" [Verbose] Bucket sizes :", bucket_sizes_words, "\n")
@@ -117,6 +121,8 @@ if __name__ == '__main__':
     enc_name = "char" if FLAGS.is_char_level_encoder else "word"
     dec_name = "char" if FLAGS.is_char_level_decoder else "word"
     enc_dec_name = enc_name + "2" + dec_name
+    if FLAGS.dataset != "movie":
+        enc_dec_name += "_messenger"
     if FLAGS.use_attention:
         enc_dec_name += "Att"
     log_dir = enc_dec_name + "_" + str(FLAGS.num_layers) + "x" + str(FLAGS.hidden_size) + "_embed" + str(

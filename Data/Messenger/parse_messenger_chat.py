@@ -30,8 +30,8 @@ from tqdm import tqdm
 
 bucket_lengths_chars = [(50, 50), (100, 100), (150, 150), (300, 300), (500, 500)]
 # Nom de l'utilisateur
-main_user = "Louis-Henri Franc"
-# Restreindre les réponses à main_user
+main_user = "Felix G. Harvey"
+# Restreindre les reponses a main_user
 restrict_answer_to_main_user = False
 
 
