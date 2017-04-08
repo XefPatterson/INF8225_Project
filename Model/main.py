@@ -65,6 +65,8 @@ if __name__ == '__main__':
             qa_pairs = data['qa_pairs']
             bucket_sizes = data['bucket_sizes']
             bucket_lengths = data['bucket_lengths']
+            bucket_sizes = bucket_sizes[:-1]
+            bucket_lengths = bucket_lengths[:-1]
 
         # Flemme de modifier le code en profondeur ^^
         data_words = data
