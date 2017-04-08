@@ -10,7 +10,10 @@ debug = False
 buckets = [(50, 50), (100, 100), (150, 150), (300, 300)]
 logdir = "Model/char2char_2x256_embed128"
 model_name = os.path.join(logdir, "model.ckpt-64223.meta")
-ACCESS_TOKEN = "EAAERfcfHLrIBAPjI6W8IO0L43wNhET7FZBp5ZA4HOJ2xrzm6xrKNwPYdt4IzD4flnDizcwjYqlLTyWE4KmAkzxDqc2oS0pkGja3sUUx4ZBLn6xLksmUmmaJ0PHWaCTaJX0k4NJ0SZAiCDdltJf86JWCvkBukWSljLshtU7wNpQZDZD"
+ACCESS_TOKEN = "EAAERfcfHLrIBAHfXCWfc8aOIi12HDlW24EuZArIVaVhrIuHQyKKxy4ZCtEElZCZCulgXOxnnNKaAHs6HRKeREM1qM9AZCb9SJZBfP3c20522xmBoXdf1LPb6BwA1Jad5ueXVE1V0ZBTpqLd6SQCmOtjHtdDa9XVza0UB5W8p1vKuQZDZD"
+
+BOT_ID = 0
+BOT_NAME = "louis"
 
 
 def encrypt_single(string, symbol_to_idx):
@@ -142,57 +145,123 @@ class GraphHandler:
             return output_string[:end_index]
 
 
-def reply(user_id, msg):
-    """
-    Reply to the user
-    :param user_id:
-    :param msg:
-    :return:
-    """
-    data = {
-        "recipient": {"id": user_id},
-        "message": {"text": msg}
-    }
-    resp = requests.post("https://graph.facebook.com/v2.6/me/messages?access_token=" + ACCESS_TOKEN, json=data)
-    print("Message send", resp.content)
+import fbmq
+from fbmq import MessageType
+import random
 
-
-app = Flask(__name__)
 if debug:
     to_bucket = 2
     buckets = buckets[:to_bucket]
     model_name = "Model/char2char_1x256_embed30/model.ckpt-0.meta"
 
-g = GraphHandler()
-
+# g = GraphHandler()
+g = None
 timestamps = []
+
+app = Flask(__name__)
+page = fbmq.Page(ACCESS_TOKEN, BOT_ID, BOT_NAME)
 
 
 @app.route('/', methods=['POST'])
-def handle_incoming_messages(graph=g):
-    data = request.json
-    sender = data['entry'][0]['messaging'][0]['sender']['id']
-    print("Incoming message", data['entry'][0]['messaging'][0])
-    # try:
-    if data['entry'][0]['messaging'][0]["sender"]["id"] == "388754244807763":
-        print("received self message")
-        return "ok"
-    if data['entry'][0]['messaging'][0]["timestamp"] in timestamps:
-        return "ok"
-    else:
-        timestamps.append(data['entry'][0]['messaging'][0]["timestamp"])
-    message = data['entry'][0]['messaging'][0]['message']['text']
-    print("Text message:", message)
-    out = graph.feed_new_sentence(sentence=message)
-    reply(sender, out)
-    # except:
-    #     print("Error while receiving a message")
+def webhook():
+    data = request.get_data(as_text=True)
+    sender_id, next_bot_id = page.get_user_identity(data)
+    page.handle_webhook(data, sender_id, next_bot_id)
     return "ok"
 
 
-@app.route('/', methods=['GET'])
-def handle_verification():
-    return request.args['hub.challenge']
+from pprint import pprint
+
+
+@page.handle_echo
+def message_handler(event, sender_id, next_bot_id):
+    print("IN ECHO MESSAGE")
+    pprint([[k, var] for k, var in event.__dict__.items()])
+    sender_fb_id = event.sender_id
+    # page.typing_on(sender_fb_id)
+
+    print("Message from {} to {}".format(sender_id, next_bot_id))
+
+    if sender_id == BOT_ID and next_bot_id != BOT_ID:
+        print("Receive its ECHO, quit")
+        return "ok"
+    to_answer = (next_bot_id == BOT_ID)
+    if event.is_text_message and not to_answer:
+        if next_bot_id == MessageType.UNKNOWN_TURN:
+            next_bot_id = hash(event.timestamp) % len(page.all_bots)
+            print(next_bot_id)
+            to_answer = (next_bot_id == BOT_ID)
+
+        elif next_bot_id == MessageType.HUMAN_TURN:
+            to_answer = False
+            metadata = "{}-{}-{}".format(BOT_ID, BOT_NAME, MessageType.NOTIFY_HUMAN)
+            page.send(sender_fb_id,
+                      "{} is saying: Human it is your turn".format(BOT_NAME), metadata=metadata)
+
+        elif next_bot_id == MessageType.NOTIFY_HUMAN:
+            # Do nothing, it is human turn
+            pass
+    print("Gonna answer a message: {}".format(to_answer))
+    if to_answer:
+        next_bot_id = random.randint(0, len(page.all_bots))
+        print("Number of bots {}".format(len(page.all_bots)))
+        metadata = "{}~{}~{}".format(BOT_ID, BOT_NAME, next_bot_id)
+
+        # Check if it is human turn to answer!
+        if next_bot_id == len(page.all_bots):
+            metadata = "{}~{}~{}".format(BOT_ID, BOT_NAME, MessageType.HUMAN_TURN)
+        print("Metadata: {}".format(metadata))
+
+        page.send(page.user_id,
+                  "{} is saying: What's your favorite movie genre?. For {}".format(BOT_NAME, next_bot_id),
+                  metadata=metadata)
+
+
+@page.handle_message
+def message_handler(event, sender_id, next_bot_id):
+    print("IN HANDLE MESSAGE")
+    pprint([[k, var] for k, var in event.__dict__.items()])
+
+    sender_fb_id = event.sender_id
+    message = event.message_text
+    page.typing_on(sender_fb_id)
+
+    print("Message from {} to {}".format(sender_id, next_bot_id))
+
+    to_answer = (next_bot_id == BOT_ID)
+    if event.is_text_message:
+        if next_bot_id == MessageType.UNKNOWN_TURN:
+            next_bot_id = hash(event.timestamp) % len(page.all_bots)
+            # print(next_bot_id)
+            to_answer = (next_bot_id == BOT_ID)
+
+        elif next_bot_id == MessageType.HUMAN_TURN:
+            to_answer = False
+            metadata = "{}~{}~{}".format(BOT_ID, BOT_NAME, MessageType.NOTIFY_HUMAN)
+            page.send(sender_fb_id,
+                      "{} is saying: Human it is your turn".format(BOT_NAME), metadata=metadata)
+
+        elif next_bot_id == MessageType.NOTIFY_HUMAN:
+            # Do nothing, it is human turn
+            pass
+    print("Gonna answer a message: {}".format(to_answer))
+    if to_answer:
+        next_bot_id = random.randint(0, len(page.all_bots))
+        print("Number of bots {}".format(len(page.all_bots)))
+        metadata = "{}~{}~{}".format(BOT_ID, BOT_NAME, next_bot_id)
+        # Check if it is human turn to answer!
+        if next_bot_id == len(page.all_bots):
+            metadata = "{}~{}~{}".format(BOT_ID, BOT_NAME, MessageType.HUMAN_TURN)
+        print("Metadata: {}".format(metadata))
+        page.send(page.user_id,
+                  "{} is saying: What's your favorite movie genre?. For {}".format(BOT_NAME, next_bot_id),
+                  metadata=metadata)
+
+
+@page.after_send
+def after_send(payload, response):
+    """:type payload: fbmq.Payload"""
+    print("complete")
 
 
 if __name__ == '__main__':

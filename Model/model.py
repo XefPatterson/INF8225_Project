@@ -16,10 +16,13 @@ class Seq2Seq(object):
         """
 
         self.max_gradient_norm = FLAGS.max_gradient_norm
-        self.learning_rate = tf.Variable(float(FLAGS.learning_rate), trainable=False)
         self.global_step = tf.Variable(0, trainable=False)
         self.is_training = tf.placeholder(tf.bool)
 
+        self.dropout_ratio = tf.train.exponential_decay(1.0, self.global_step,
+                                                        30000, 0.95, staircase=True)
+
+        self.learning_rate = tf.train.exponential_decay(float(FLAGS.learning_rate), self.global_step, 30000, 0.98, staircase=True)
         self.buckets = buckets
 
         self.encoder_inputs = []
@@ -83,7 +86,7 @@ class Seq2Seq(object):
         """
         cprint("[*] Building model (G)", color="yellow")
         single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
-        cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
+        cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=self.dropout_ratio)
         if FLAGS.num_layers > 1:
             cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers)
 
