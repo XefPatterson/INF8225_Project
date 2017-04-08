@@ -10,7 +10,7 @@ debug = False
 buckets = [(50, 50), (100, 100), (150, 150), (300, 300)]
 logdir = "Model/char2char_2x256_embed128"
 model_name = os.path.join(logdir, "model.ckpt-64223.meta")
-ACCESS_TOKEN = "EAAERfcfHLrIBAPjI6W8IO0L43wNhET7FZBp5ZA4HOJ2xrzm6xrKNwPYdt4IzD4flnDizcwjYqlLTyWE4KmAkzxDqc2oS0pkGja3sUUx4ZBLn6xLksmUmmaJ0PHWaCTaJX0k4NJ0SZAiCDdltJf86JWCvkBukWSljLshtU7wNpQZDZD"
+ACCESS_TOKEN = "EAAERfcfHLrIBAHfXCWfc8aOIi12HDlW24EuZArIVaVhrIuHQyKKxy4ZCtEElZCZCulgXOxnnNKaAHs6HRKeREM1qM9AZCb9SJZBfP3c20522xmBoXdf1LPb6BwA1Jad5ueXVE1V0ZBTpqLd6SQCmOtjHtdDa9XVza0UB5W8p1vKuQZDZD"
 
 BOT_ID = 0
 BOT_NAME = "louis"
@@ -170,17 +170,25 @@ def webhook():
     return "ok"
 
 
-@page.handle_message
-def message_handler(event, sender_id, next_bot_id):
-    sender_fb_id = event.sender_id
-    message = event.message_text
-    page.typing_on(sender_id)
+from pprint import pprint
 
-    print("Received message", sender_id, next_bot_id, event)
+
+@page.handle_echo
+def message_handler(event, sender_id, next_bot_id):
+    print("IN ECHO MESSAGE")
+    pprint([[k, var] for k, var in event.__dict__.items()])
+    sender_fb_id = event.sender_id
+    # page.typing_on(sender_fb_id)
+
+    print("Message from {} to {}".format(sender_id, next_bot_id))
+
+    if sender_id == BOT_ID and next_bot_id != BOT_ID:
+        print("Receive its ECHO, quit")
+        return "ok"
     to_answer = (next_bot_id == BOT_ID)
-    if event.is_text_message:
+    if event.is_text_message and not to_answer:
         if next_bot_id == MessageType.UNKNOWN_TURN:
-            next_bot_id = hash(message) % len(page.all_bots)
+            next_bot_id = hash(event.timestamp) % len(page.all_bots)
             print(next_bot_id)
             to_answer = (next_bot_id == BOT_ID)
 
@@ -193,22 +201,61 @@ def message_handler(event, sender_id, next_bot_id):
         elif next_bot_id == MessageType.NOTIFY_HUMAN:
             # Do nothing, it is human turn
             pass
-
+    print("Gonna answer a message: {}".format(to_answer))
     if to_answer:
-        next_bot_id = random.randint(0, len(page.all_bots) + 1)
-        metadata = "{}-{}-{}".format(BOT_ID, BOT_NAME, next_bot_id)
+        next_bot_id = random.randint(0, len(page.all_bots))
+        print("Number of bots {}".format(len(page.all_bots)))
+        metadata = "{}~{}~{}".format(BOT_ID, BOT_NAME, next_bot_id)
 
         # Check if it is human turn to answer!
         if next_bot_id == len(page.all_bots):
-            metadata = "{}-{}-{}".format(BOT_ID, BOT_NAME, MessageType.HUMAN_TURN)
+            metadata = "{}~{}~{}".format(BOT_ID, BOT_NAME, MessageType.HUMAN_TURN)
+        print("Metadata: {}".format(metadata))
 
-        page.send(sender_fb_id,
-                  "{} is saying: What's your favorite movie genre?. For {}".format(BOT_NAME, next_bot_id), metadata=metadata)
+        page.send(page.user_id,
+                  "{} is saying: What's your favorite movie genre?. For {}".format(BOT_NAME, next_bot_id),
+                  metadata=metadata)
 
 
-@page.handle_echo
-def echo_handler(event, sender_id, next_bot_id):
-    print("Received an echo", sender_id, next_bot_id, event)
+@page.handle_message
+def message_handler(event, sender_id, next_bot_id):
+    print("IN HANDLE MESSAGE")
+    pprint([[k, var] for k, var in event.__dict__.items()])
+
+    sender_fb_id = event.sender_id
+    message = event.message_text
+    page.typing_on(sender_fb_id)
+
+    print("Message from {} to {}".format(sender_id, next_bot_id))
+
+    to_answer = (next_bot_id == BOT_ID)
+    if event.is_text_message:
+        if next_bot_id == MessageType.UNKNOWN_TURN:
+            next_bot_id = hash(event.timestamp) % len(page.all_bots)
+            # print(next_bot_id)
+            to_answer = (next_bot_id == BOT_ID)
+
+        elif next_bot_id == MessageType.HUMAN_TURN:
+            to_answer = False
+            metadata = "{}~{}~{}".format(BOT_ID, BOT_NAME, MessageType.NOTIFY_HUMAN)
+            page.send(sender_fb_id,
+                      "{} is saying: Human it is your turn".format(BOT_NAME), metadata=metadata)
+
+        elif next_bot_id == MessageType.NOTIFY_HUMAN:
+            # Do nothing, it is human turn
+            pass
+    print("Gonna answer a message: {}".format(to_answer))
+    if to_answer:
+        next_bot_id = random.randint(0, len(page.all_bots))
+        print("Number of bots {}".format(len(page.all_bots)))
+        metadata = "{}~{}~{}".format(BOT_ID, BOT_NAME, next_bot_id)
+        # Check if it is human turn to answer!
+        if next_bot_id == len(page.all_bots):
+            metadata = "{}~{}~{}".format(BOT_ID, BOT_NAME, MessageType.HUMAN_TURN)
+        print("Metadata: {}".format(metadata))
+        page.send(page.user_id,
+                  "{} is saying: What's your favorite movie genre?. For {}".format(BOT_NAME, next_bot_id),
+                  metadata=metadata)
 
 
 @page.after_send

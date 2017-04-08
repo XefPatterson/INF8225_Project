@@ -147,6 +147,8 @@ class Page(object):
         self._page_name = None
 
         self.all_bots = {bot_id: bot_name}
+        self.user_id = None
+        print("All bots", self.all_bots)
 
     # webhook_handlers contains optin, message, echo, delivery, postback, read, account_linking.
     # these are only set by decorators
@@ -226,7 +228,7 @@ class Page(object):
         return self._page_name
 
     def _fetch_page_info(self):
-        r = requests.get("https://graph.facebook.com/v2.6/me",
+        r = requests.get("https://graph.facebook.com/v2.6/me/messages",
                          params={"access_token": self.page_access_token},
                          headers={'Content-type': 'application/json'})
 
@@ -461,9 +463,13 @@ class Page(object):
 
     def get_user_identity(self, data):
         try:
-            metadata = data["entry"]["messaging"]["message"]["metadata"]
-            bot_id, bot_name, next_bot_id = metadata.split("-")
-
+            data = json.loads(data)
+            print("Get user", data)
+            metadata = data["entry"][0]["messaging"][0]["message"]["metadata"]
+            bot_id, bot_name, next_bot_id = metadata.split("~")
+            bot_id = int(bot_id)
+            next_bot_id = int(next_bot_id)
+            print("In user identity ", bot_id, bot_name, next_bot_id)
             if next_bot_id == MessageType.HUMAN_TURN:
                 # It is human turn
                 return bot_id, MessageType.HUMAN_TURN
@@ -475,5 +481,7 @@ class Page(object):
                 self.add_bot(bot_id, bot_name)
         except:
             # It is a human
+            self.user_id = data["entry"][0]["messaging"][0]["sender"]["id"]
+            print("User id", self.user_id)
             return MessageType.HUMAN_MESSAGE, MessageType.UNKNOWN_TURN
         return bot_id, next_bot_id
