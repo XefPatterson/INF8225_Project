@@ -8,6 +8,7 @@ import numpy as np
 
 debug = False  # Fast testing (keep only the first two buckets)
 verbose = True
+private = False
 
 flags = tf.app.flags
 flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
@@ -31,7 +32,7 @@ flags.DEFINE_integer("num_layers", 2, "Num of layers [3]")
 flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [256]")
 flags.DEFINE_integer("embedding_size", 128, "Symbol embedding size")
 flags.DEFINE_integer("use_attention", False, "Use attention mechanism?")
-flags.DEFINE_integer("valid_start", 0.95, "Validation set start ratio")
+flags.DEFINE_integer("valid_start", 0.98, "Validation set start ratio")
 
 flags.DEFINE_string("dataset", "messenger", "Dataset to use")
 
@@ -60,13 +61,13 @@ if __name__ == '__main__':
             bucket_sizes_words = data_words['bucket_sizes']
             bucket_lengths_words = data_words['bucket_lengths']
     else:
-        with open(os.path.join('..', 'Data', 'Messenger', 'QA_Pairs_Chars_Buckets.pkl'), 'rb') as f:
+        with open(os.path.join('..', 'Data', 'Messenger', 'QA_Pairs_Chars_Buckets_FJ.pkl'), 'rb') as f:
             data = pickle.load(f)
             qa_pairs = data['qa_pairs']
             bucket_sizes = data['bucket_sizes']
             bucket_lengths = data['bucket_lengths']
-            bucket_sizes = bucket_sizes[:-1]
-            bucket_lengths = bucket_lengths[:-1]
+            bucket_sizes = bucket_sizes[:]
+            bucket_lengths = bucket_lengths[:]
 
         # Flemme de modifier le code en profondeur ^^
         data_words = data
@@ -173,7 +174,8 @@ if __name__ == '__main__':
             valid_losses.append(out['losses'])
             # Decrypt and display answers
             if verbose:
-                utils.decrypt(questions, answers, out["predictions"], idx_to_char, idx_to_words, FLAGS.batch_size,
+                if not private:
+                    utils.decrypt(questions, answers, out["predictions"], idx_to_char, idx_to_words, FLAGS.batch_size,
                               char_encoder=FLAGS.is_char_level_encoder, char_decoder=FLAGS.is_char_level_decoder)
                 print(" [Verbose] TRAIN average loss for epoch =", avg_train_losses[-1], '\n')
                 print(" [Verbose] TEST batch loss =", out['losses'], '\n')
