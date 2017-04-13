@@ -3,7 +3,7 @@ import sys
 import numpy as np
 import cPickle as pickle
 
-to_combine = ["QA_Pairs_Chars_Buckets_felix.pkl", "QA_Pairs_Chars_Buckets_julien.pkl"]
+to_combine = ["QA_Pairs_Chars_Buckets_julien.pkl", "QA_Pairs_Chars_Buckets_felix.pkl"]
 bucket_lengths_chars = [(50, 50), (100, 100), (150, 150), (300, 300), (500, 500)]
 
 if __name__ == "__main__" :
@@ -33,3 +33,5 @@ if __name__ == "__main__" :
         pickle.dump({"qa_pairs": buckets,
                      "bucket_sizes": bucket_sizes,
                      "bucket_lengths": bucket_lengths}, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    print "Done."

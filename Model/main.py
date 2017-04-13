@@ -16,19 +16,19 @@ flags.DEFINE_integer("save_frequency", 1800, "Output frequency")
 flags.DEFINE_integer("nb_iter_per_epoch", 250, "Output frequency")
 
 # Optimization
-flags.DEFINE_float("learning_rate", 0.0005, "Learning rate of for adam [0.0001")
+flags.DEFINE_float("learning_rate", 0.00003, "Learning rate of for adam [0.0001")
 flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
-flags.DEFINE_integer("batch_size", 64, "The size of the batch [64]")
+flags.DEFINE_integer("batch_size", 16, "The size of the batch [64]")
 
 # Vocabulary
-flags.DEFINE_integer("num_samples", 8003, "Number of samples for sampled softmax.")
+flags.DEFINE_integer("num_samples", 256, "Number of samples for sampled softmax.")
 flags.DEFINE_integer("vocab_size_words", 8003, "The size of the word vocabulary [8003]")
 flags.DEFINE_integer("vocab_size_chars", 55, "The size of the char vocabulary [55]")
 flags.DEFINE_integer("is_char_level_encoder", True, "Is the encoder char level based")
 flags.DEFINE_integer("is_char_level_decoder", True, "Is the decoder char level based")
 
 flags.DEFINE_float("keep_prob", 0.75, "Dropout ratio [0.9]")
-flags.DEFINE_integer("num_layers", 2, "Num of layers [3]")
+flags.DEFINE_integer("num_layers", 3, "Num of layers [3]")
 flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [256]")
 flags.DEFINE_integer("embedding_size", 128, "Symbol embedding size")
 flags.DEFINE_integer("use_attention", False, "Use attention mechanism?")
@@ -66,8 +66,8 @@ if __name__ == '__main__':
             qa_pairs = data['qa_pairs']
             bucket_sizes = data['bucket_sizes']
             bucket_lengths = data['bucket_lengths']
-            bucket_sizes = bucket_sizes[:]
-            bucket_lengths = bucket_lengths[:]
+            bucket_sizes = bucket_sizes[:-1]
+            bucket_lengths = bucket_lengths[:-1]
 
         # Flemme de modifier le code en profondeur ^^
         data_words = data
@@ -108,9 +108,9 @@ if __name__ == '__main__':
             if FLAGS.is_char_level_encoder and not FLAGS.is_char_level_decoder:  # CHAR | WORD
                 mix_bucket_lengths.append((bucket_lengths[i][0], bucket_lengths_words[i][1]))
 
-    mix_bucket_lengths = mix_bucket_lengths[:-1]
-    bucket_sizes = bucket_sizes[:-1]
-    bucket_sizes_words = bucket_sizes_words[:-1]
+    #mix_bucket_lengths = mix_bucket_lengths[:-1]
+    #bucket_sizes = bucket_sizes[:-1]
+    #bucket_sizes_words = bucket_sizes_words[:-1]
 
     if verbose:
         print("\n [Verbose] Zipped buckets :", mix_bucket_lengths)
@@ -122,7 +122,7 @@ if __name__ == '__main__':
 
     # Relevant log dir:
     enc_name = "char" if FLAGS.is_char_level_encoder else "word"
-    dec_name = "char" if FLAGS.is_char_level_decoder else "word"
+    dec_name = "char" if FLAGS.is_char_level_decoder else "word_nSamples" + str(FLAGS.num_samples)
     enc_dec_name = enc_name + "2" + dec_name
     if FLAGS.dataset != "movie":
         enc_dec_name += "_messenger"
@@ -186,7 +186,24 @@ if __name__ == '__main__':
                                      FLAGS.batch_size, FLAGS.is_char_level_encoder, FLAGS.is_char_level_decoder,
                                      path=os.path.join(log_dir, "attention.png"))
 
-            utils.plot_curves(avg_train_losses, valid_losses, os.path.join(log_dir, "curves.png"))
             # Cheap save for now.
-            with open(os.path.join(log_dir, "losses.pkl"), "wb") as f:
+            if os.path.exists("losses.pkl"):
+                with open(os.path.join(log_dir, "losses.pkl"), "rb") as f:
+                    t_losses = pickle.load(f)['train_losses']
+                    v_losses = pickle.load(f)['valid_losses']
+
+                t_losses.append(avg_train_losses[-1])
+                v_losses.append(valid_losses[-1])
+
+                with open(os.path.join(log_dir, "losses.pkl"), "wb") as f:
+                    pickle.dump({"train_losses": t_losses, "valid_losses": v_losses}, f)
+
+                utils.plot_curves(t_losses, v_losses, os.path.join(log_dir, "curves.png"))
+
+            else:
+                with open(os.path.join(log_dir, "losses.pkl"), "wb") as f:
+                    pickle.dump({"train_losses": avg_train_losses, "valid_losses": valid_losses}, f)
+                utils.plot_curves(avg_train_losses, valid_losses, os.path.join(log_dir, "curves.png"))
+
+            with open(os.path.join(log_dir, "session_run_losses.pkl"), "wb") as f:
                 pickle.dump({"train_losses": avg_train_losses, "valid_losses": valid_losses}, f)
