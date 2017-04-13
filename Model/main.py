@@ -16,25 +16,25 @@ flags.DEFINE_integer("save_frequency", 1800, "Output frequency")
 flags.DEFINE_integer("nb_iter_per_epoch", 250, "Output frequency")
 
 # Optimization
-flags.DEFINE_float("learning_rate", 0.00003, "Learning rate of for adam [0.0001")
+flags.DEFINE_float("learning_rate", 0.0003, "Learning rate of for adam [0.0001")
 flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 flags.DEFINE_integer("batch_size", 16, "The size of the batch [64]")
 
 # Vocabulary
-flags.DEFINE_integer("num_samples", 256, "Number of samples for sampled softmax.")
+flags.DEFINE_integer("num_samples", 1024, "Number of samples for sampled softmax.")
 flags.DEFINE_integer("vocab_size_words", 8003, "The size of the word vocabulary [8003]")
 flags.DEFINE_integer("vocab_size_chars", 55, "The size of the char vocabulary [55]")
-flags.DEFINE_integer("is_char_level_encoder", True, "Is the encoder char level based")
-flags.DEFINE_integer("is_char_level_decoder", True, "Is the decoder char level based")
+flags.DEFINE_integer("is_char_level_encoder", False, "Is the encoder char level based")
+flags.DEFINE_integer("is_char_level_decoder", False, "Is the decoder char level based")
 
 flags.DEFINE_float("keep_prob", 0.75, "Dropout ratio [0.9]")
 flags.DEFINE_integer("num_layers", 3, "Num of layers [3]")
 flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [256]")
 flags.DEFINE_integer("embedding_size", 128, "Symbol embedding size")
-flags.DEFINE_integer("use_attention", False, "Use attention mechanism?")
+flags.DEFINE_integer("use_attention", True, "Use attention mechanism?")
 flags.DEFINE_integer("valid_start", 0.98, "Validation set start ratio")
 
-flags.DEFINE_string("dataset", "messenger", "Dataset to use")
+flags.DEFINE_string("dataset", "movie", "Dataset to use")
 
 FLAGS = flags.FLAGS
 
@@ -85,11 +85,11 @@ if __name__ == '__main__':
         bucket_lengths_words = bucket_lengths_words[:to_bucket]
         bucket_sizes = bucket_sizes[:to_bucket]
         bucket_sizes_words = bucket_sizes_words[:to_bucket]
-        FLAGS.nb_iter_per_epoch = 100
-        FLAGS.hidden_size = 256
+        FLAGS.nb_iter_per_epoch = 150
+        FLAGS.hidden_size = 512
         FLAGS.num_layers = 1
-        FLAGS.batch_size = 64
-        FLAGS.save_frequency = 120
+        FLAGS.batch_size = 32
+        FLAGS.save_frequency = 300
 
     assert len(bucket_lengths) == len(bucket_lengths_words), "Not the same number of buckets!"
     mix_bucket_lengths = []
@@ -139,7 +139,10 @@ if __name__ == '__main__':
     avg_train_losses = []
     valid_losses = []
     with sv.managed_session() as sess:
+        #from tensorflow.python import debug as tf_debug
+        #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
         print(sess.run(seq2seq.global_step))
+
         while not sv.should_stop():
             iter = seq2seq.global_step.eval(sess)
             if verbose:
@@ -204,6 +207,3 @@ if __name__ == '__main__':
                 with open(os.path.join(log_dir, "losses.pkl"), "wb") as f:
                     pickle.dump({"train_losses": avg_train_losses, "valid_losses": valid_losses}, f)
                 utils.plot_curves(avg_train_losses, valid_losses, os.path.join(log_dir, "curves.png"))
-
-            with open(os.path.join(log_dir, "session_run_losses.pkl"), "wb") as f:
-                pickle.dump({"train_losses": avg_train_losses, "valid_losses": valid_losses}, f)

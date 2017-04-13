@@ -100,13 +100,16 @@ def plot_attention(questions, attentions, predictions, idx_to_char, idx_to_word,
         data = np.stack(attention, axis=1)
         tuples[i].imshow(data, vmin=0, vmax=1, cmap='Greys', interpolation="none")
         tuples[i].set_xticks(range(len(answer)))
-        tuples[i].set_xticklabels(answer, fontsize='xx-small')
+        if not char_decoder:
+            tuples[i].set_xticklabels(answer, fontsize='x-small', rotation='vertical')
+        else:
+            tuples[i].set_xticklabels(answer, fontsize='x-small')
 
         tuples[i].set_yticks(range(len(question)), minor=False)
         tuples[i].set_yticklabels(question, fontsize='x-small')
     plt.axis('off')
     #plt.savefig("attention_matrix.png")
-    fig.savefig(path, dpi=300)
+    fig.savefig(path, dpi=400)
     plt.close()
 
 def encrypt_single(string, symbol_to_idx):

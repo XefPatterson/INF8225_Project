@@ -19,10 +19,6 @@ class Seq2Seq(object):
         self.global_step = tf.Variable(0, trainable=False)
         self.is_training = tf.placeholder(tf.bool)
 
-        self.dropout_ratio = tf.train.exponential_decay(1.0, self.global_step,
-                                                        30000, 0.95, staircase=True)
-
-        self.learning_rate = tf.train.exponential_decay(float(FLAGS.learning_rate), self.global_step, 30000, 0.98, staircase=True)
         self.buckets = buckets
 
         self.encoder_inputs = []
@@ -56,6 +52,7 @@ class Seq2Seq(object):
         self.softmax_loss_function = None
         if FLAGS.num_samples > 0 and FLAGS.num_samples < self.vocab_size_decoder:
             cprint("[!] Create a sample softmax", color="yellow")
+
             w = tf.get_variable("proj_w", [FLAGS.hidden_size, self.vocab_size_decoder])
             w_t = tf.transpose(w)
             b = tf.get_variable("proj_b", [self.vocab_size_decoder])
@@ -73,9 +70,7 @@ class Seq2Seq(object):
                                                labels=labels,
                                                num_sampled=FLAGS.num_samples,
                                                num_classes=self.vocab_size_decoder), tf.float32)
-
-                inference_softmax = tf.nn.softmax(tf.matmul(local_inputs, tf.transpose(local_w_t)) + local_b)
-                return tf.cond(self.is_training, lambda: sample_softmax, lambda: inference_softmax)
+                return sample_softmax
 
             self.softmax_loss_function = sampled_loss
 
@@ -86,9 +81,9 @@ class Seq2Seq(object):
         """
         cprint("[*] Building model (G)", color="yellow")
         single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
-        cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=self.dropout_ratio)
+        cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
         if FLAGS.num_layers > 1:
-            cell = tf.contrib.rnn.MultiRNNCell([single_cell] * FLAGS.num_layers)
+            cell = tf.contrib.rnn.MultiRNNCell([cell] * FLAGS.num_layers)
 
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
             if FLAGS.use_attention:
@@ -126,6 +121,13 @@ class Seq2Seq(object):
             self.outputs = model_infos[0]
             self.losses = model_infos[1]
 
+            self.outputs_test = [[] for _ in range(len(self.buckets))]
+            if FLAGS.num_samples > 0 and FLAGS.num_samples < self.vocab_size_decoder:
+                for bucket_id in range(len(self.buckets)):
+                    for i in range(self.buckets[bucket_id][1]):
+                        self.outputs_test[bucket_id].append(tf.nn.xw_plus_b(
+                            self.outputs[bucket_id][i], self.output_projection[0], self.output_projection[1]))
+                        # break
             if FLAGS.use_attention:
                 self.attentions = model_infos[2]
 
@@ -157,7 +159,7 @@ class Seq2Seq(object):
 
         # Optimization :
         params = tf.trainable_variables()
-        opt = tf.train.AdamOptimizer(self.learning_rate)
+        opt = tf.train.AdamOptimizer(FLAGS.learning_rate)
 
         for b in range(len(self.buckets)):
             cprint("Constructing the forward pass for bucket {}".format(b))
@@ -184,7 +186,7 @@ class Seq2Seq(object):
             input_feed[self.targets[l].name] = answers[:, l]
             input_feed[self.target_weights[l].name] = np.not_equal(answers[:, l], 0).astype(np.float32)
 
-        #Loss, a scalar
+        # Loss, a scalar
         output_feed = [self.losses[bucket_id]]
 
         if is_training:
@@ -192,24 +194,28 @@ class Seq2Seq(object):
                 self.global_step,  # Current global step
                 self.updates[bucket_id],  # Nothing
                 self.gradient_norms[bucket_id]  # A scalar the gradient norm
-                ]
+            ]
 
         if FLAGS.use_attention:
             output_feed.append(self.attentions[bucket_id])
 
-        for l in range(decoder_size):
-            # Will return a numpy array [batch_size x size_vocab x 1]. Value are not restricted to [-1, 1]
-            output_feed.append(self.outputs[bucket_id][l])
+        if not is_training:
+            for l in range(decoder_size):
+                output_feed.append(self.outputs_test[bucket_id][l])
 
         # Outputs is a list of size (3 + decoder_size)
         outputs = session.run(output_feed, input_feed)
 
         # Cleaner output dic
-        outputs_dic = {
-            "predictions": outputs[-decoder_size:]
-        }
+        if not is_training:
+            outputs_dic = {
+                "predictions": outputs[-decoder_size:]
+            }
+        else:
+            outputs_dic = {}
+
         if FLAGS.use_attention:
-            outputs_dic["attentions"] = outputs[-decoder_size - 1]
+            outputs_dic["attentions"] = outputs[1]
 
         # If is_training:
         outputs_dic["losses"] = outputs[0]
