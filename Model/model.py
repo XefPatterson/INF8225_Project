@@ -127,7 +127,11 @@ class Seq2Seq(object):
                     for i in range(self.buckets[bucket_id][1]):
                         self.outputs_test[bucket_id].append(tf.nn.xw_plus_b(
                             self.outputs[bucket_id][i], self.output_projection[0], self.output_projection[1]))
-                        # break
+            else:
+                for bucket_id in range(len(self.buckets)):
+                    for i in range(self.buckets[bucket_id][1]):
+                        self.outputs_test[bucket_id].append(self.outputs[bucket_id][i])
+
             if FLAGS.use_attention:
                 self.attentions = model_infos[2]
 

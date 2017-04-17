@@ -98,7 +98,7 @@ def plot_attention(questions, attentions, predictions, idx_to_char, idx_to_word,
         # per rows: question attention
         # per cols: answer generation
         data = np.stack(attention, axis=1)
-        tuples[i].imshow(data, vmin=0, vmax=1, cmap='Greys', interpolation="none")
+        tuples[i].imshow(data, cmap='Greys', interpolation="none")
         tuples[i].set_xticks(range(len(answer)))
         if not char_decoder:
             tuples[i].set_xticklabels(answer, fontsize='x-small', rotation='vertical')

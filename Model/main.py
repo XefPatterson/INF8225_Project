@@ -27,7 +27,7 @@ flags.DEFINE_integer("vocab_size_chars", 55, "The size of the char vocabulary [5
 flags.DEFINE_integer("is_char_level_encoder", False, "Is the encoder char level based")
 flags.DEFINE_integer("is_char_level_decoder", False, "Is the decoder char level based")
 
-flags.DEFINE_float("keep_prob", 0.75, "Dropout ratio [0.9]")
+flags.DEFINE_float("keep_prob", 0.99, "Dropout ratio [0.9]")
 flags.DEFINE_integer("num_layers", 3, "Num of layers [3]")
 flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [256]")
 flags.DEFINE_integer("embedding_size", 128, "Symbol embedding size")
@@ -190,11 +190,11 @@ if __name__ == '__main__':
                                      path=os.path.join(log_dir, "attention.png"))
 
             # Cheap save for now.
-            if os.path.exists("losses.pkl"):
+            if os.path.exists(os.path.join(log_dir, "losses.pkl")):
                 with open(os.path.join(log_dir, "losses.pkl"), "rb") as f:
-                    t_losses = pickle.load(f)['train_losses']
-                    v_losses = pickle.load(f)['valid_losses']
-
+                    losses = pickle.load(f)
+                t_losses = losses['train_losses']
+                v_losses = losses['valid_losses']
                 t_losses.append(avg_train_losses[-1])
                 v_losses.append(valid_losses[-1])
 
