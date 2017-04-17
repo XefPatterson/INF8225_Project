@@ -3,6 +3,33 @@ from termcolor import cprint
 import numpy as np
 
 
+def restore(model, session, save_name="model/"):
+    """
+    Retrieve last model saved if possible
+    Create a main Saver object
+    Create a SummaryWriter object
+    Init variables
+    :param save_name: string (default : model)
+     Name of the model
+    :return:
+    """
+    saver = tf.train.Saver(max_to_keep=2)
+    # Try to restore an old model
+    last_saved_model = tf.train.latest_checkpoint(save_name)
+
+    group_init_ops = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+    session.run(group_init_ops)
+    summary_writer = tf.summary.FileWriter('logs/',
+                                        graph=session.graph,
+                                        flush_secs=20)
+    if last_saved_model is not None:
+        saver.restore(session, last_saved_model)
+        cprint("[*] Restoring model  {}".format(last_saved_model), color="green")
+    else:
+        tf.train.global_step(session, model.global_step)
+        cprint("[*] New model created", color="green")
+    return saver, summary_writer
+
 def get_random_bucket_id_pkl(bucket_sizes):
     # Fix problem.
     bucket_sizes = [float(bucket_size) for bucket_size in bucket_sizes]
