@@ -142,10 +142,14 @@ def plot_attention(questions, attentions, predictions, idx_to_char, idx_to_word,
 
 def encrypt_single(string, symbol_to_idx, words=False):
     if not(words):
-        return np.array([symbol_to_idx[char] for char in string.lower()])
+        theList = [symbol_to_idx[char] for char in string.lower()]
+        theList.append(symbol_to_idx['<EOS>'])
+        return np.array(theList)
     
     else:
-        return np.array([symbol_to_idx[word] for word in string.lower().split(" ")])
+        theList = [symbol_to_idx[word] for word in string.lower().split(" ")]
+        theList.append(symbol_to_idx['<EOS>'])
+        return np.array(theList)
 
 
 def plot_curves(train_losses, valid_losses, path="learning_curves.png"):
