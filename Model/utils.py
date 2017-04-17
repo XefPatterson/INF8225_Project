@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from termcolor import cprint
 import numpy as np
+import tensorflow as tf
 
 
 def restore(model, session, save_name="model/"):
@@ -139,8 +140,12 @@ def plot_attention(questions, attentions, predictions, idx_to_char, idx_to_word,
     fig.savefig(path, dpi=400)
     plt.close()
 
-def encrypt_single(string, symbol_to_idx):
-    return np.array([symbol_to_idx[char] for char in string.lower()])
+def encrypt_single(string, symbol_to_idx, words=False):
+    if not(words):
+        return np.array([symbol_to_idx[char] for char in string.lower()])
+    
+    else:
+        return np.array([symbol_to_idx[word] for word in string.lower().split(" ")])
 
 
 def plot_curves(train_losses, valid_losses, path="learning_curves.png"):
