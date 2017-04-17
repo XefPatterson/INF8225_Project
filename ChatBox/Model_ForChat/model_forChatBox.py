@@ -6,28 +6,65 @@ import os
 import time
 
 import sys
-sys.path.append(os.path.join('..', 'Model'))
+sys.path.append(os.path.join('..', '..', 'Model'))
 import model
 from model import Seq2Seq
 import utils
 
-flags = tf.app.flags
-flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
-flags.DEFINE_integer("nb_iter_per_epoch", 100, "Epoch to train [100]")
+MODE = 'WORDS2WORDS' # WORDS2WORDS, CHARS2CHARS
 
-flags.DEFINE_integer("out_frequency", 200, "Output frequency")
-flags.DEFINE_float("learning_rate", 0.0002, "Learning rate of for adam [0.0001")
-flags.DEFINE_float("decay_learning_rate_step", 10000, "Step to decay the learning rate [10000]")
-flags.DEFINE_float("learning_rate_decay_factor", 0.96, "Learning rate decay [0.96]")
-flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
+if MODE == 'WORDS2WORDS':
+    # WODS2WORDS
+    flags = tf.app.flags
+    flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
+    flags.DEFINE_integer("save_frequency", 1800, "Output frequency")
+    flags.DEFINE_integer("nb_iter_per_epoch", 250, "Output frequency")
 
-flags.DEFINE_float("beta1", 0.5, "Momentum term of adam [0.5]")
-flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
-flags.DEFINE_integer("vocab_size", 55, "The size of the vocabulary [64]")
-flags.DEFINE_float("keep_prob", 0.9, "Dropout ratio [0.5]")
+    # Optimization
+    flags.DEFINE_float("learning_rate", 0.0003, "Learning rate of for adam [0.0001")
+    flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
+    flags.DEFINE_integer("batch_size", 16, "The size of the batch [64]")
 
-flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [128]")
-flags.DEFINE_integer("num_layers", 1, "Num of layers [1]")
+    # Vocabulary
+    flags.DEFINE_integer("num_samples", 1024, "Number of samples for sampled softmax.")
+    flags.DEFINE_integer("vocab_size_words", 8003, "The size of the word vocabulary [8003]")
+    flags.DEFINE_integer("vocab_size_chars", 55, "The size of the char vocabulary [55]")
+    flags.DEFINE_integer("is_char_level_encoder", False, "Is the encoder char level based")
+    flags.DEFINE_integer("is_char_level_decoder", False, "Is the decoder char level based")
+
+    flags.DEFINE_float("keep_prob", 0.75, "Dropout ratio [0.9]")
+    flags.DEFINE_integer("num_layers", 3, "Num of layers [3]")
+    flags.DEFINE_integer("hidden_size", 256, "Hidden size of RNN cell [256]")
+    flags.DEFINE_integer("embedding_size", 128, "Symbol embedding size")
+    flags.DEFINE_integer("use_attention", True, "Use attention mechanism?")
+    flags.DEFINE_integer("valid_start", 0.98, "Validation set start ratio")
+
+elif MODE == 'CHARS2CHARS':
+    # CHARS2CHARS
+    flags = tf.app.flags
+    flags.DEFINE_integer("nb_epochs", 100000, "Epoch to train [100 000]")
+    flags.DEFINE_integer("save_frequency", 1800, "Output frequency")
+    flags.DEFINE_integer("nb_iter_per_epoch", 250, "Output frequency")
+
+    # Optimization
+    flags.DEFINE_float("learning_rate", 0.0003, "Learning rate of for adam [0.0001")
+    flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
+    flags.DEFINE_integer("batch_size", 16, "The size of the batch [64]")
+
+    # Vocabulary
+    flags.DEFINE_integer("num_samples", 1024, "Number of samples for sampled softmax.")
+    flags.DEFINE_integer("vocab_size_words", 8003, "The size of the word vocabulary [8003]")
+    flags.DEFINE_integer("vocab_size_chars", 55, "The size of the char vocabulary [55]")
+    flags.DEFINE_integer("is_char_level_encoder", True, "Is the encoder char level based")
+    flags.DEFINE_integer("is_char_level_decoder", True, "Is the decoder char level based")
+
+    flags.DEFINE_float("keep_prob", 0.75, "Dropout ratio [0.9]")
+    flags.DEFINE_integer("num_layers", 2, "Num of layers [3]")
+    flags.DEFINE_integer("hidden_size", 512, "Hidden size of RNN cell [256]")
+    flags.DEFINE_integer("embedding_size", 128, "Symbol embedding size")
+    flags.DEFINE_integer("use_attention", True, "Use attention mechanism?")
+    flags.DEFINE_integer("valid_start", 0.98, "Validation set start ratio")
+
 
 FLAGS = flags.FLAGS
 model.FLAGS = FLAGS
@@ -35,26 +72,30 @@ model.FLAGS = FLAGS
 class seq2seq_chat(Seq2Seq):
     
     def __init__(self, buckets, forward_only):
-        super(seq2seq_chat, self).__init__(buckets, forward_only)
+        super(seq2seq_chat, self).__init__(buckets)
         
-        # Load the idx_to_chars dictionary
-        with open(os.path.join('..', 'Data', 'MovieQA', 'idx_to_chars.pkl'), 'rb') as f:
-            self.idx_to_chars = pickle.load(f)
+        # Load the idx_to_symbol dictionary
+        if FLAGS.is_char_level_encoder : idx_to_symbol_File = 'idx_to_chars.pkl'
+        else : idx_to_symbol_File = 'idx_to_words.pkl'
+        with open(os.path.join('..', 'Data', 'MovieQA', idx_to_symbol_File), 'rb') as f:
+            self.idx_to_symbol = pickle.load(f)
 
-        # Load the chars_to_idx dictionary
-        with open(os.path.join('..', 'Data', 'MovieQA', 'chars_to_idx.pkl'), 'rb') as f:
-            self.chars_to_idx = pickle.load(f)
+        # Load the symbol_to_idx dictionary
+        if FLAGS.is_char_level_encoder : symbol_to_idx_File = 'chars_to_idx.pkl'
+        else : symbol_to_idx_File = 'words_to_idx.pkl'
+        with open(os.path.join('..', 'Data', 'MovieQA', symbol_to_idx_File), 'rb') as f:
+            self.symbol_to_idx = pickle.load(f)
 
     def reply(self, question_string, session):
         print("PREDICTING")
         # User asks something...
-        q = utils.encrypt_single(question_string, self.chars_to_idx)
-        a = utils.encrypt_single("", self.chars_to_idx)
+        q = utils.encrypt_single(question_string, self.symbol_to_idx, words=not(FLAGS.is_char_level_encoder))
+        a = utils.encrypt_single("", self.symbol_to_idx)
 
 
         # Equivalent to utils.get_batch but for one example
         #   Prepare the batch (batch_size = 1)
-        buckets = [(50, 50)]
+        buckets = [(25, 25)]
         bucket_id = 0
         q_pads = np.zeros([1, buckets[bucket_id][0]])
         a_pads = np.zeros([1, buckets[bucket_id][1]])
@@ -63,21 +104,27 @@ class seq2seq_chat(Seq2Seq):
         a_pads[0][:a.shape[0]] = a
 
         # Processing
-        outputs, questions, answers = self.predict(bucket_id=0, session=session, questions=q_pads, answers=a_pads)
+        out = self.forward_with_feed_dict(bucket_id=0, session=session, questions=q_pads, answers=a_pads, is_training=False)
+        outputs = out["predictions"]
+        
+        #outputs, questions, answers = self.predict(bucket_id=0, session=session, questions=q_pads, answers=a_pads)
 
         # The model replies
         outputs = np.squeeze(outputs)
         outputs = np.argmax(outputs, axis=1)
-        output_string = utils.decrypt_single(list(outputs), self.idx_to_chars)
+        
+        output_string = utils.decrypt_single(list(outputs), self.idx_to_symbol, words=not(FLAGS.is_char_level_decoder))
 
-        questions = np.squeeze(questions)
-        q_string = utils.decrypt_single(list(questions), self.idx_to_chars)
+        """
+        q_pads = np.squeeze(q_pads)
+        q_string = utils.decrypt_single(list(q_pads), self.idx_to_symbol)
 
-        answers = np.squeeze(answers)
-        a_string = utils.decrypt_single(list(answers), self.idx_to_chars)
+        a_pads = np.squeeze(a_pads)
+        a_string = utils.decrypt_single(list(a_pads), self.idx_to_symbol)
 
         cprint("Q : " + q_string.split("<PAD>")[0], color="green")
         cprint("A : " + a_string.split("<PAD>")[0], color="yellow")
+        """
         cprint("O : " + output_string, color="red")
         
         return output_string
