@@ -1,7 +1,35 @@
 import matplotlib.pyplot as plt
 from termcolor import cprint
 import numpy as np
+import tensorflow as tf
 
+
+def restore(model, session, save_name="model/"):
+    """
+    Retrieve last model saved if possible
+    Create a main Saver object
+    Create a SummaryWriter object
+    Init variables
+    :param save_name: string (default : model)
+     Name of the model
+    :return:
+    """
+    saver = tf.train.Saver(max_to_keep=2)
+    # Try to restore an old model
+    last_saved_model = tf.train.latest_checkpoint(save_name)
+
+    group_init_ops = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+    session.run(group_init_ops)
+    summary_writer = tf.summary.FileWriter('logs/',
+                                        graph=session.graph,
+                                        flush_secs=20)
+    if last_saved_model is not None:
+        saver.restore(session, last_saved_model)
+        cprint("[*] Restoring model  {}".format(last_saved_model), color="green")
+    else:
+        tf.train.global_step(session, model.global_step)
+        cprint("[*] New model created", color="green")
+    return saver, summary_writer
 
 def get_random_bucket_id_pkl(bucket_sizes):
     # Fix problem.
@@ -112,8 +140,16 @@ def plot_attention(questions, attentions, predictions, idx_to_char, idx_to_word,
     fig.savefig(path, dpi=400)
     plt.close()
 
-def encrypt_single(string, symbol_to_idx):
-    return np.array([symbol_to_idx[char] for char in string.lower()])
+def encrypt_single(string, symbol_to_idx, words=False):
+    if not(words):
+        theList = [symbol_to_idx[char] for char in string.lower()]
+        theList.append(symbol_to_idx['<EOS>'])
+        return np.array(theList)
+    
+    else:
+        theList = [symbol_to_idx[word] for word in string.lower().split(" ")]
+        theList.append(symbol_to_idx['<EOS>'])
+        return np.array(theList)
 
 
 def plot_curves(train_losses, valid_losses, path="learning_curves.png"):
