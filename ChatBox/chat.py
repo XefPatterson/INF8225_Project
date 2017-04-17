@@ -18,6 +18,7 @@ sys.path.append(os.path.join('.', 'Model_ForChat'))
 sys.path.append(os.path.join('..', 'Model'))
 from ui_chatmainwindow import Ui_ChatMainWindow
 from ui_chatsetnickname import Ui_NicknameDialog
+import model_forChatBox
 from model_forChatBox import seq2seq_chat
 import utils
 
@@ -102,12 +103,14 @@ class ChatMainWindow(QtGui.QMainWindow, Ui_ChatMainWindow):
         # CHAT-BOT INITIALIZATION
         #--------------------------------
         # Instanciates and build the model for feedforward only
-        self.seq2seq_bot = seq2seq_chat(buckets=[(50, 50)], forward_only=True)
+        self.seq2seq_bot = seq2seq_chat(buckets=[(25, 25)], forward_only=True)
         self.seq2seq_bot.build()
 
         # Restore the trained model's parameters from checkpoint file
         self.sess = tf.Session()
-        saver, summary_writer = utils.restore(self.seq2seq_bot, self.sess, save_name=os.path.join('..', 'Model', 'model_saved'))
+        if model_forChatBox.MODE == 'WORDS2WORDS': directory = 'model_word2word'
+        elif model_forChatBox.MODE == 'CHARS2CHARS': directory = 'model_char2char'
+        saver, summary_writer = utils.restore(self.seq2seq_bot,self.sess,save_name=os.path.join('..', 'Model', directory))
 
     def rebuildHistory(self):
         history = '\n'.join(self.m_messages)
@@ -130,6 +133,7 @@ class ChatMainWindow(QtGui.QMainWindow, Ui_ChatMainWindow):
         """
         theReply = self.seq2seq_bot.reply(text, self.sess)
         self.m_messages.append("[%s] - %s" % ("BOT", theReply))
+        self.m_messages.append("")
         
         if len(self.m_messages) > 100:
             self.m_messages.pop(0)
