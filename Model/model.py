@@ -81,6 +81,7 @@ class Seq2Seq(object):
         """
         cprint("[*] Building model (G)", color="yellow")
         single_cell = tf.contrib.rnn.GRUCell(FLAGS.hidden_size)
+        #self.keep_prob = tf.placeholder(tf.float32)
         cell = tf.contrib.rnn.DropoutWrapper(single_cell, output_keep_prob=FLAGS.keep_prob)
         if FLAGS.num_layers > 1:
             cell = tf.contrib.rnn.MultiRNNCell([cell] * FLAGS.num_layers)

@@ -158,4 +158,4 @@ def plot_curves(train_losses, valid_losses, path="learning_curves.png"):
     plt.ylabel('Losses')
     plt.xlabel('Epochs')
     plt.savefig(path)
-    plt.close
+    plt.close()
